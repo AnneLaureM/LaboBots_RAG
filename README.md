@@ -40,6 +40,7 @@ LaboBots_RAG/
 	├── summarize_corpus.py         # standalone, resumable notebook 1 Section 7.6 (LLM summaries)
 	├── streamlit_app.py            # single shared key, simple chat client
 	├── streamlit_app_secure.py     # per-user auth (OIDC or demo) + per-user LiteLLM key
+	├── create_demo_accounts.py     # one personalized secrets.toml per participant (demo auth)
 	├── manage_litellm.sh           # remote Ollama + LiteLLM proxy + Postgres + participant keys
 	├── manage_remote_rag.sh        # remote Chroma lifecycle + SSH tunnel helper (see note below)
 	├── verify_remote_chroma.py     # local-vs-remote Chroma comparison, used by manage_remote_rag.sh verify
@@ -173,10 +174,45 @@ generated remotely into `$HOME/rag_workshop/participant-keys.tsv` (mode 600); co
 scp -P 22003 labobots@195.221.220.18:rag_workshop/participant-keys.tsv .
 ```
 
+**Keys expire after 8h** (`duration` hardcoded in `create_keys()`). For a multi-day event, re-run
+`create-keys` each morning — it's idempotent: it deletes any existing key sharing the same alias
+before creating the new one, so re-running with the same `--count`/`--prefix` just refreshes the
+same `participant-01`..`participant-N` aliases instead of failing on "alias already exists". If
+you'd rather generate once for the whole event, raise the `"duration":"8h"` value in the script
+before running `create-keys` (e.g. `"96h"` to cover a 4-day school) — lower is safer if a key might
+leak (screen share, copy-paste in chat), higher means less day-to-day re-running.
+
 **What gets logged**: LiteLLM records every request's full prompt and response in Postgres by
 default, tied to the calling key (`LiteLLM_SpendLogs` table) — useful for reviewing the workshop
 afterward, but tell participants before the session (see notebook 2, Section 10.7 for the exact
 wording and how to disable it if you'd rather not keep this data).
+
+## Participant login accounts (`streamlit_app_secure.py`, demo mode)
+
+`streamlit_app_secure.py`'s `auth_mode = "demo"` needs a username/password per participant
+(notebook 2, Section 14.3). Since each participant runs Streamlit on their **own** laptop, their
+`secrets.toml` only ever needs to contain **their own** credentials — never the whole group's, the
+way the notebook's illustrative alice/bob example does. `rag_workshop/create_demo_accounts.py`
+generates that: one personalized, ready-to-use `secrets.toml` per participant, reusing the LiteLLM
+key they were already issued (`participant-keys.tsv`, see above) and a freshly generated,
+bcrypt-hashed demo password.
+
+```bash
+python3 rag_workshop/create_demo_accounts.py
+```
+
+Reads `participant-keys.tsv` (repo root) and writes, per participant, into
+`rag_workshop/participant-secrets/` (gitignored):
+
+- `<alias>.toml` — a complete `secrets.toml`, ready to copy to `rag_workshop/.streamlit/secrets.toml`
+  on that participant's own machine.
+- `_distribution-list.tsv` — the plaintext passwords (needed once, to hand out) paired with each
+  alias. Hand out **one row at a time**, never the whole file, and delete it once everyone has
+  their credentials — it's the only place a password exists in clear.
+
+Each participant's procedure: copy their `<alias>.toml` to `rag_workshop/.streamlit/secrets.toml`,
+then `streamlit run rag_workshop/streamlit_app_secure.py` and log in with their alias (e.g.
+`participant-07`) and the password from their row of the distribution list.
 
 ## Streamlit apps
 
@@ -189,6 +225,12 @@ wording and how to disable it if you'd rather not keep this data).
 
 Both read `rag_workshop/.streamlit/secrets.toml` (gitignored) for connection details and keys — see
 notebook 2, Sections 12 and 14, for how to fill it in.
+
+**Tip — view the app inside VS Code instead of a separate browser window**: after
+`streamlit run ...` prints its local URL (`http://localhost:8501`), open the command palette
+(`Ctrl+Shift+P`) and run **`Simple Browser: Show`**, then paste that URL. The app opens in a VS
+Code tab next to your notebook/terminal, so you can keep the Streamlit logs, the code, and the
+running app all in one window.
 
 ## Verification
 

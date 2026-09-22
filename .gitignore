@@ -13,6 +13,7 @@ __pycache__/
 .env.*
 !.env.example
 rag_workshop/.streamlit/secrets.toml
+rag_workshop/participant-secrets/
 *.key
 *.log
 rag_workshop/litellm_config.yaml
