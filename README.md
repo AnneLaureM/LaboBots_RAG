@@ -9,7 +9,7 @@ size a local server for a conversational-agent workload and build a working RAG 
 Generation) service around it — from first principles up to a secured, multi-user deployment.
 Prerequisite: solid Python.
 
-Two notebooks carry the actual teaching content; everything else in this repo is the operational
+Three notebooks carry the actual teaching content; everything else in this repo is the operational
 tooling that supports running the workshop (server setup, key provisioning, corpus rebuilds):
 
 1. **`01_hybrid_RAG_from_scratch_sections1-7.ipynb`** — build a hybrid (dense + sparse) RAG pipeline
@@ -20,6 +20,10 @@ tooling that supports running the workshop (server setup, key provisioning, corp
 2. **`02_distributed_architecture_streamlit_litellm.ipynb`** — split that same pipeline across
    machines (a remote vector store, a remote LLM behind a LiteLLM proxy with per-participant keys)
    and expose it through a Streamlit chat client, with and without authentication.
+3. **`03_thunderbird_agent.ipynb`** — what an *agent* is (vs. a chatbot), and how `thunderbird_agent/`
+   (a real, standalone Thunderbird extension — not a notebook, see below) turns notebooks 1-2's
+   chat pipeline into one: reads the email you're viewing, drafts a reply with the local or remote
+   LLM, and inserts it into Thunderbird's own reply window — real signature, real Send button.
 
 This directory is the single project root and the GitHub repository root. There is no nested project
 for the environment notebook.
