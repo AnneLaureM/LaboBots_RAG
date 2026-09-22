@@ -1,0 +1,45 @@
+{
+  "manifest_version": 2,
+  "name": "LaboBots Mail Agent",
+  "version": "0.2.0",
+  "description": "Draft email replies with a local (Ollama) or remote (LiteLLM proxy) LLM, inserted directly into Thunderbird's own reply window so your signature and Send button just work.",
+  "author": "LaboBots workshop",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "mail-agent@labobots.workshop",
+      "strict_min_version": "115.0"
+    }
+  },
+
+  "icons": {
+    "32": "icons/icon.svg",
+    "64": "icons/icon.svg",
+    "128": "icons/icon.svg"
+  },
+
+  "permissions": [
+    "messagesRead",
+    "compose",
+    "storage",
+    "webRequest",
+    "webRequestBlocking",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+
+  "background": {
+    "scripts": ["background.js"]
+  },
+
+  "message_display_action": {
+    "default_title": "LaboBots Mail Agent",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "popup/popup.html"
+  },
+
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  }
+}

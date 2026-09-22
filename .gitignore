@@ -34,3 +34,7 @@ requirements-lock.txt
 
 # Keys
 participant-keys.tsv
+thunderbird_agent/dist/
+
+# Local assistant instructions (Claude Code)
+CLAUDE.md

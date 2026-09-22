@@ -22,7 +22,7 @@ Usage:
   manage_litellm.sh install-db
   manage_litellm.sh start
   manage_litellm.sh stop
-  manage_litellm.sh create-keys [--count 36] [--prefix participant]
+  manage_litellm.sh create-keys [--count 36] [--prefix participant] [--duration 8h] [--budget 5]
 
 install-db installs PostgreSQL on the remote host and provisions a "litellm"
 database + role, which LiteLLM's proxy needs to persist and generate
@@ -156,17 +156,21 @@ stop() {
 }
 
 create_keys() {
-    local count=36 prefix=participant
+    local count=36 prefix=participant duration=8h budget=5
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --count) count="$2"; shift 2 ;;
             --prefix) prefix="$2"; shift 2 ;;
+            --duration) duration="$2"; shift 2 ;;
+            --budget) budget="$2"; shift 2 ;;
             *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
         esac
     done
     [[ "$count" =~ ^[1-9][0-9]*$ ]] || { echo "Count must be a positive integer." >&2; exit 2; }
+    [[ "$duration" =~ ^[1-9][0-9]*(s|m|h|d)$ ]] || { echo "Duration must look like 30s, 45m, 8h, or 20d." >&2; exit 2; }
+    [[ "$budget" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "Budget must be a positive number (USD)." >&2; exit 2; }
     prompt_master_key
-    printf '%s\n' "$MASTER_KEY" | remote 'read -r MASTER_KEY; set -e; test -n "$(pgrep -u "$(id -u)" -f "[l]itellm.*--port '"$REMOTE_LITELLM_PORT"'" || true)" || { echo "LiteLLM is not running on port '"$REMOTE_LITELLM_PORT"'. Run start first." >&2; exit 1; }; grep -q "^  database_url:" "$HOME/rag_workshop/litellm_config.yaml" 2>/dev/null || { echo "No database configured (see litellm_config.yaml) -- create-keys needs a Postgres-backed LiteLLM. Run '"'"'install-db'"'"', then '"'"'start'"'"' again with the DB password." >&2; exit 1; }; umask 077; output="$HOME/rag_workshop/participant-keys.tsv"; : > "$output"; for i in $(seq 1 '"$count"'); do alias="'"$prefix"'-$(printf "%02d" "$i")"; curl -sS -X POST http://127.0.0.1:'"$REMOTE_LITELLM_PORT"'/key/delete -H "Authorization: Bearer $MASTER_KEY" -H "Content-Type: application/json" -d "{\"key_aliases\":[\"$alias\"]}" >/dev/null 2>&1 || true; response=$(curl -sS -w "\n%{http_code}" -X POST http://127.0.0.1:'"$REMOTE_LITELLM_PORT"'/key/generate -H "Authorization: Bearer $MASTER_KEY" -H "Content-Type: application/json" -d "{\"duration\":\"8h\",\"max_budget\":5,\"models\":[\"'"$LITELLM_MODEL_NAME"'\"],\"key_alias\":\"$alias\"}"); http_code=$(printf "%s" "$response" | tail -n1); body=$(printf "%s" "$response" | sed "\$d"); key=$(printf "%s" "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get(\"key\", \"\"))" 2>/dev/null || true); test "${key#sk-}" != "$key" || { echo "Key generation failed for $alias (HTTP $http_code): $body" >&2; exit 1; }; printf "%s\t%s\n" "$alias" "$key" >> "$output"; done; chmod 600 "$output"; echo "Generated '"$count"' keys: $output"'
+    printf '%s\n' "$MASTER_KEY" | remote 'read -r MASTER_KEY; set -e; test -n "$(pgrep -u "$(id -u)" -f "[l]itellm.*--port '"$REMOTE_LITELLM_PORT"'" || true)" || { echo "LiteLLM is not running on port '"$REMOTE_LITELLM_PORT"'. Run start first." >&2; exit 1; }; grep -q "^  database_url:" "$HOME/rag_workshop/litellm_config.yaml" 2>/dev/null || { echo "No database configured (see litellm_config.yaml) -- create-keys needs a Postgres-backed LiteLLM. Run '"'"'install-db'"'"', then '"'"'start'"'"' again with the DB password." >&2; exit 1; }; umask 077; output="$HOME/rag_workshop/participant-keys.tsv"; : > "$output"; for i in $(seq 1 '"$count"'); do alias="'"$prefix"'-$(printf "%02d" "$i")"; curl -sS -X POST http://127.0.0.1:'"$REMOTE_LITELLM_PORT"'/key/delete -H "Authorization: Bearer $MASTER_KEY" -H "Content-Type: application/json" -d "{\"key_aliases\":[\"$alias\"]}" >/dev/null 2>&1 || true; response=$(curl -sS -w "\n%{http_code}" -X POST http://127.0.0.1:'"$REMOTE_LITELLM_PORT"'/key/generate -H "Authorization: Bearer $MASTER_KEY" -H "Content-Type: application/json" -d "{\"duration\":\"'"$duration"'\",\"max_budget\":'"$budget"',\"models\":[\"'"$LITELLM_MODEL_NAME"'\"],\"key_alias\":\"$alias\"}"); http_code=$(printf "%s" "$response" | tail -n1); body=$(printf "%s" "$response" | sed "\$d"); key=$(printf "%s" "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get(\"key\", \"\"))" 2>/dev/null || true); test "${key#sk-}" != "$key" || { echo "Key generation failed for $alias (HTTP $http_code): $body" >&2; exit 1; }; printf "%s\t%s\n" "$alias" "$key" >> "$output"; done; chmod 600 "$output"; echo "Generated '"$count"' keys: $output"'
 }
 
 command="${1:-help}"

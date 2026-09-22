@@ -34,9 +34,18 @@ for the environment notebook.
 LaboBots_RAG/
 ├── 01_hybrid_RAG_from_scratch_sections1-7.ipynb   # single-laptop RAG, from scratch
 ├── 02_distributed_architecture_streamlit_litellm.ipynb  # split across machines + Streamlit
-├── python_environments_pip_conda_uv_docker.ipynb  # standalone tutorial, unrelated to the RAG content
+├── 03_thunderbird_agent.ipynb   # what an agent is + walkthrough of thunderbird_agent/ below
+├── python_environments_pip_conda_uv_docker.ipynb  # uv-focused env tutorial; Section 0 inits notebooks 1-2's real environment
 ├── pyproject.toml
 ├── uv.lock
+├── thunderbird_agent/            # standalone Thunderbird extension -- not a notebook, see 03
+│	├── manifest.json
+│	├── background.js              # the only thing that calls the LLM or Thunderbird's compose API
+│	├── popup/                     # backend choice + steering prompt UI
+│	├── options/                   # local/remote backend config (mirrors secrets.toml)
+│	├── icons/
+│	├── build.sh                   # packages the extension as dist/*.xpi (gitignored)
+│	└── README.md                  # install/usage instructions for this extension specifically
 └── rag_workshop/
 	├── corpus/                    # scraped pages + generated indexes; all gitignored except .gitkeep-level structure
 	├── chunk_types.py              # shared Chunk dataclass (see "Why chunk_types.py exists" below)
@@ -66,10 +75,12 @@ that for good — both the notebook and the Streamlit apps import from `chunk_ty
 
 ## Local setup
 
-From the workspace root:
+Requires Python 3.11 to 3.13; `uv` is the recommended tool. From the workspace root:
 
 ```bash
-./rag_workshop/setup_uv.sh
+./rag_workshop/setup_uv.sh          # one-shot setup: venv, dependencies, Jupyter kernel
+uv sync --extra embeddings          # BGE-M3 (notebook 1, rebuild_corpus.py)
+uv sync --extra secure-app          # streamlit_app_secure.py
 ```
 
 Select the kernel `Python (LaboBots RAG workshop)` in VS Code and run project commands with `uv run`.
@@ -236,6 +247,19 @@ notebook 2, Sections 12 and 14, for how to fill it in.
 Code tab next to your notebook/terminal, so you can keep the Streamlit logs, the code, and the
 running app all in one window.
 
+## Thunderbird extension
+
+`thunderbird_agent/` is packaged and installed independently of the Python environment:
+
+```bash
+./thunderbird_agent/build.sh        # -> thunderbird_agent/dist/labobots-mail-agent-<version>.xpi
+```
+
+Then in Thunderbird: **Add-ons and Themes** -> gear icon -> **Install Add-on From File...**. Full
+install, configuration (including Ollama's `OLLAMA_ORIGINS` note) and usage are in
+[`thunderbird_agent/README.md`](thunderbird_agent/README.md); the design is explained in
+notebook 3.
+
 ## Verification
 
 ```bash
@@ -247,7 +271,27 @@ Only meaningful if the remote corpus was built via the local-build-then-copy pat
 a `rebuild_corpus.py` run, check the collection directly instead (`collection.count()` from a
 notebook cell, or the Streamlit sidebar's "Connected to remote vector store (N chunks)" line).
 
+## Contributing
+
+- Keep changes focused and preserve the existing notebook and script structure. This directory is
+  the single project root: don't create a nested project for a notebook.
+- Serialized `Chunk` objects must come from `rag_workshop/chunk_types.py` (see above); never
+  redefine the class in a notebook or script.
+- Keep retrieval behavior aligned between notebook 1 and both Streamlit clients.
+- The Streamlit apps read their configuration from `rag_workshop/.streamlit/secrets.toml`; don't
+  hardcode deployment values (hosts, ports, keys) in the code.
+- `rag_workshop/corpus/` and `rag_workshop/chroma_db/` are generated state: rebuild them with the
+  scripts, never edit them by hand, and preserve the cache semantics of `rebuild_corpus.py`.
+- Prefer the standard library or already-declared dependencies over adding new packages.
+- Use ASCII in source code unless existing content requires otherwise.
+- There is no formal test suite: check a change by running the narrowest relevant script or app
+  startup, then review the diff with `git diff --check`. Test the Thunderbird extension through
+  its own install flow.
+
 ## Do not commit
 
-`.streamlit/secrets.toml`, any API/participant keys, `participant-keys.tsv`, `.venv/`, and everything
-under `rag_workshop/corpus/` except the source scripts — all already covered by `.gitignore`.
+`.streamlit/secrets.toml`, any API/participant keys, `participant-keys.tsv`,
+`rag_workshop/participant-secrets/`, `.venv/`, and everything under `rag_workshop/corpus/` and
+`rag_workshop/chroma_db/` — all already covered by `.gitignore`. Treat `participant-keys.tsv` and
+`participant-secrets/` as sensitive even though they're ignored, and never print master keys or
+database passwords in commands, logs, or error messages.

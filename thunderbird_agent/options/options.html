@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LaboBots Mail Agent -- Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <h1>LaboBots Mail Agent -- Settings</h1>
+  <p class="muted">
+    Stored locally in this Thunderbird profile only (<code>browser.storage.local</code>) -- never
+    synced, never sent anywhere except the two endpoints below when you generate a draft.
+  </p>
+
+  <section>
+    <h2>Local backend -- Ollama</h2>
+    <p class="muted">Same model you installed for notebook 1, Section 1.2.</p>
+    <label class="field">
+      <span>Ollama URL</span>
+      <input id="ollama_url" type="text" placeholder="http://localhost:11434">
+    </label>
+    <label class="field">
+      <span>Model name</span>
+      <input id="ollama_model" type="text" placeholder="llama3.2:3b">
+    </label>
+  </section>
+
+  <section>
+    <h2>Remote backend -- LiteLLM proxy</h2>
+    <p class="muted">
+      Same values as <code>rag_workshop/.streamlit/secrets.toml</code> (notebook 2, Section 12.3
+      / 14.1). Requires the SSH tunnel to be open
+      (<code>./rag_workshop/manage_remote_rag.sh tunnel</code>).
+    </p>
+    <label class="field">
+      <span>LiteLLM proxy URL</span>
+      <input id="litellm_url" type="text" placeholder="http://127.0.0.1:4000">
+    </label>
+    <label class="field">
+      <span>Model name</span>
+      <input id="litellm_model" type="text" placeholder="workshop-llm">
+    </label>
+    <label class="field">
+      <span>Your participant key</span>
+      <input id="litellm_key" type="password" placeholder="sk-...">
+    </label>
+  </section>
+
+  <section>
+    <h2>Local history</h2>
+    <p class="muted">
+      Recent drafts are kept locally as style context for future generations (see the notebook's
+      "agent memory" section). <span id="history-count">0</span> entries stored.
+    </p>
+    <button id="clear-history">Clear history</button>
+  </section>
+
+  <div id="save-status" class="muted" hidden></div>
+  <button id="save" class="primary">Save</button>
+
+  <script src="options.js"></script>
+</body>
+</html>
