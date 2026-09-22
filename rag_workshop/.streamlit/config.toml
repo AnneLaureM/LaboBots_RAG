@@ -1,0 +1,14 @@
+# Safe to commit -- colors only, no secrets. See Section 14.2.
+[server]
+# Participants don't edit the app live, so auto-rerun-on-file-change isn't needed. This does
+# NOT silence the noisy transformers/torchvision warnings below (Streamlit still scans loaded
+# modules regardless of this setting) -- that's suppressed in the app itself, see its top.
+fileWatcherType = "none"
+
+[theme]
+base = "light"
+primaryColor = "#0D9488"            # accent: buttons, active menu item, links, chat input focus
+backgroundColor = "#FFFFFF"         # main content area
+secondaryBackgroundColor = "#F0FDFA"  # sidebar, code blocks, widget backgrounds (teal tint)
+textColor = "#0F172A"
+font = "sans serif"
