@@ -1,0 +1,35 @@
+# Local Python environments and caches
+.venv/
+python_env_lab/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local secrets and runtime files
+.env
+.env.*
+!.env.example
+rag_workshop/.streamlit/secrets.toml
+*.key
+*.log
+rag_workshop/litellm_config.yaml
+rag_workshop/litellm.db
+
+# Generated local indexes and vector-store state -- everything under rag_workshop/corpus/ is
+# produced by notebook 1 / rebuild_corpus.py (or cached by notebook 1, Section 7.6), never
+# hand-written, so the whole directory is ignored rather than listing files one by one.
+rag_workshop/chroma_db/
+rag_workshop/corpus/
+
+# Auto-generated tool symlinks (point into .venv, meaningless outside this machine)
+.agents/skills/
+.claude/skills/
+
+# Local lock snapshot generated only when uv is unavailable
+requirements-lock.txt
+
+# Keys
+participant-keys.tsv
