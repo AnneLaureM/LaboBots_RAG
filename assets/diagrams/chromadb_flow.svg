@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" font-family="Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
     </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ef6c00"/>
+    </marker>
   </defs>
-  <rect width="900" height="480" fill="#ffffff"/>
+  <rect width="900" height="560" fill="#ffffff"/>
   <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">ChromaDB — de la page web au resultat de recherche</text>
 
   <!-- Indexing pipeline (top row) -->
@@ -15,8 +18,9 @@
   <text x="85" y="113" text-anchor="middle" font-size="11">(doc.cc.in2p3.fr)</text>
 
   <rect x="175" y="75" width="110" height="55" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
-  <text x="230" y="98" text-anchor="middle" font-size="11">Chunking</text>
-  <text x="230" y="113" text-anchor="middle" font-size="11">(chunk_types.py)</text>
+  <text x="230" y="94" text-anchor="middle" font-size="11">Chunking</text>
+  <text x="230" y="109" text-anchor="middle" font-size="10">(heading-aware,</text>
+  <text x="230" y="122" text-anchor="middle" font-size="10">rebuild_corpus.py)</text>
 
   <rect x="320" y="75" width="130" height="55" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
   <text x="385" y="94" text-anchor="middle" font-size="11">BGE-M3</text>
@@ -25,11 +29,20 @@
 
   <rect x="490" y="75" width="140" height="55" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
   <text x="560" y="98" text-anchor="middle" font-size="11">Collection ChromaDB</text>
-  <text x="560" y="113" text-anchor="middle" font-size="10">(index vectoriel + metadata)</text>
+  <text x="560" y="113" text-anchor="middle" font-size="10">(vecteurs denses + metadata)</text>
+
+  <rect x="320" y="170" width="130" height="60" rx="8" fill="#fbe9e7" stroke="#d84315" stroke-dasharray="4,3"/>
+  <text x="385" y="190" text-anchor="middle" font-size="10" fill="#d84315">Index lexical (sparse)</text>
+  <text x="385" y="204" text-anchor="middle" font-size="9">rag_workshop/corpus/</text>
+  <text x="385" y="216" text-anchor="middle" font-size="9">lexical_weights.pkl</text>
+  <text x="385" y="228" text-anchor="middle" font-size="9" fill="#666">(pas dans Chroma)</text>
 
   <line x1="140" y1="102" x2="173" y2="102" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
   <line x1="285" y1="102" x2="318" y2="102" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
-  <line x1="450" y1="102" x2="488" y2="102" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
+  <line x1="450" y1="95" x2="488" y2="95" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="469" y="88" text-anchor="middle" font-size="8" fill="#666">dense</text>
+  <line x1="385" y1="130" x2="385" y2="168" stroke="#d84315" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+  <text x="405" y="152" font-size="8" fill="#d84315">sparse</text>
 
   <!-- persisted store box -->
   <rect x="490" y="150" width="140" height="90" rx="10" fill="#f3e5f5" stroke="#5e35b1" stroke-dasharray="4,3"/>
@@ -39,7 +52,7 @@
   <text x="560" y="218" text-anchor="middle" font-size="10">(HttpClient, notebook 2)</text>
   <line x1="560" y1="130" x2="560" y2="148" stroke="#5e35b1" stroke-width="1.5" marker-end="url(#arrow2)"/>
 
-  <!-- Query pipeline (bottom row) -->
+  <!-- Query pipeline (bottom rows) -->
   <text x="60" y="290" font-size="13" font-weight="bold" fill="#555">Interrogation (au moment de la question)</text>
 
   <rect x="30" y="305" width="110" height="55" rx="8" fill="#e3f2fd" stroke="#1565c0"/>
@@ -54,26 +67,34 @@
   <rect x="340" y="305" width="150" height="55" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
   <text x="415" y="325" text-anchor="middle" font-size="11">Recherche ANN</text>
   <text x="415" y="340" text-anchor="middle" font-size="10">(cosine, top-k)</text>
-  <text x="415" y="353" text-anchor="middle" font-size="10">dans ChromaDB</text>
+  <text x="415" y="353" text-anchor="middle" font-size="10">dans ChromaDB -- dense</text>
 
-  <rect x="525" y="305" width="150" height="55" rx="8" fill="#e8eaf6" stroke="#3949ab"/>
-  <text x="600" y="325" text-anchor="middle" font-size="11">Reciprocal Rank</text>
-  <text x="600" y="340" text-anchor="middle" font-size="11">Fusion (dense+sparse)</text>
-  <text x="600" y="353" text-anchor="middle" font-size="10">(Section 6)</text>
+  <rect x="340" y="400" width="150" height="55" rx="8" fill="#fbe9e7" stroke="#d84315"/>
+  <text x="415" y="420" text-anchor="middle" font-size="11">Recherche sparse</text>
+  <text x="415" y="435" text-anchor="middle" font-size="10">locale (lexical_weights.pkl,</text>
+  <text x="415" y="448" text-anchor="middle" font-size="10">cote client -- Section 5)</text>
 
-  <rect x="710" y="305" width="160" height="55" rx="8" fill="#ffebee" stroke="#c62828"/>
-  <text x="790" y="325" text-anchor="middle" font-size="11">Chunks pertinents</text>
-  <text x="790" y="340" text-anchor="middle" font-size="10">-&gt; contexte du prompt</text>
-  <text x="790" y="353" text-anchor="middle" font-size="10">envoye au LLM (Section 7)</text>
+  <rect x="540" y="352" width="150" height="55" rx="8" fill="#e8eaf6" stroke="#3949ab"/>
+  <text x="615" y="372" text-anchor="middle" font-size="11">Reciprocal Rank</text>
+  <text x="615" y="387" text-anchor="middle" font-size="11">Fusion (dense+sparse)</text>
+  <text x="615" y="400" text-anchor="middle" font-size="10">(Section 6)</text>
+
+  <rect x="725" y="352" width="150" height="55" rx="8" fill="#ffebee" stroke="#c62828"/>
+  <text x="800" y="372" text-anchor="middle" font-size="11">Chunks pertinents</text>
+  <text x="800" y="387" text-anchor="middle" font-size="10">-&gt; contexte du prompt</text>
+  <text x="800" y="400" text-anchor="middle" font-size="10">envoye au LLM (Section 7)</text>
 
   <line x1="140" y1="332" x2="173" y2="332" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
-  <line x1="305" y1="332" x2="338" y2="332" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
-  <line x1="490" y1="332" x2="523" y2="332" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
-  <line x1="675" y1="332" x2="708" y2="332" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
+  <line x1="305" y1="325" x2="338" y2="325" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
+  <line x1="240" y1="360" x2="240" y2="427" stroke="#d84315" stroke-width="2"/>
+  <line x1="240" y1="427" x2="338" y2="427" stroke="#d84315" stroke-width="2" marker-end="url(#arrowOrange)"/>
+  <path d="M 490 330 L 538 375" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
+  <path d="M 490 427 L 538 385" fill="none" stroke="#d84315" stroke-width="2" marker-end="url(#arrowOrange)"/>
+  <line x1="690" y1="379" x2="723" y2="379" stroke="#555" stroke-width="2" marker-end="url(#arrow2)"/>
 
   <!-- link collection to search -->
   <path d="M 560 240 L 560 270 L 415 270 L 415 303" fill="none" stroke="#5e35b1" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow2)"/>
   <text x="420" y="270" font-size="10" fill="#5e35b1">interroge la collection</text>
 
-  <text x="450" y="460" text-anchor="middle" font-size="10" fill="#999">notebook 1 Section 5 (local) et notebook 2 (ChromaDB distant via HttpClient + tunnel SSH)</text>
+  <text x="450" y="540" text-anchor="middle" font-size="10" fill="#999">notebook 1 Section 5 (local) et notebook 2 (ChromaDB distant via HttpClient + tunnel SSH)</text>
 </svg>

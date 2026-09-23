@@ -173,10 +173,24 @@ async function getAttachmentsWithText(messageId) {
 }
 
 function buildAttachmentsContext(attachments) {
-  const withText = (attachments || []).filter((a) => a.textIncluded && a.text.trim());
-  if (withText.length === 0) return "";
-  const blocks = withText.map((a) => `--- Attachment: ${a.name} ---\n${a.text}`).join("\n\n");
-  return `\n\nThe email has the following attachment(s); their content is included below -- use it as additional context for the reply if relevant:\n\n${blocks}`;
+  const all = attachments || [];
+  const withText = all.filter((a) => a.textIncluded && a.text.trim());
+  const unreadable = all.filter((a) => !(a.textIncluded && a.text.trim()));
+
+  let context = "";
+  if (withText.length > 0) {
+    const blocks = withText.map((a) => `--- Attachment: ${a.name} ---\n${a.text}`).join("\n\n");
+    context += `\n\nThe email has the following attachment(s); their content is included below -- use it as additional context for the reply if relevant:\n\n${blocks}`;
+  }
+  if (unreadable.length > 0) {
+    // Not read (see getAttachmentsWithText's `note`), but still worth the model knowing they
+    // exist -- e.g. so a reply can say "I see you attached the invoice" without inventing content
+    // for it. Named only, matching the popup's own 🖼️/📎 icons -- see README's Attachments section.
+    const names = unreadable.map((a) => `${a.name} (${a.note || "not read"})`).join(", ");
+    context += `\n\nThe email also has these attachment(s), which could not be read: ${names}. `
+      + "You may acknowledge them by name, but do not invent or guess their content.";
+  }
+  return context;
 }
 
 async function getDisplayedEmail(tabId) {

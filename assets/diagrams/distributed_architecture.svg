@@ -1,27 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" font-family="Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
     </marker>
+    <marker id="arrowPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ad1457"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2e7d32"/>
+    </marker>
   </defs>
-  <rect width="900" height="460" fill="#ffffff"/>
+  <rect width="900" height="480" fill="#ffffff"/>
   <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">Architecture distribuee — notebook 2</text>
 
   <!-- Participant laptop -->
-  <rect x="30" y="60" width="220" height="140" rx="10" fill="#e3f2fd" stroke="#1565c0" stroke-width="2"/>
+  <rect x="30" y="60" width="220" height="190" rx="10" fill="#e3f2fd" stroke="#1565c0" stroke-width="2"/>
   <text x="140" y="82" text-anchor="middle" font-size="12" font-weight="bold">Laptop participant</text>
   <rect x="50" y="95" width="180" height="45" rx="6" fill="#fff" stroke="#1565c0"/>
   <text x="140" y="114" text-anchor="middle" font-size="11">streamlit_app.py /</text>
   <text x="140" y="128" text-anchor="middle" font-size="11">streamlit_app_secure.py</text>
-  <rect x="50" y="150" width="180" height="35" rx="6" fill="#fff" stroke="#1565c0"/>
-  <text x="140" y="172" text-anchor="middle" font-size="10">.streamlit/secrets.toml</text>
-  <text x="140" y="184" text-anchor="middle" font-size="9" fill="#666">(cle LiteLLM + tunnel)</text>
+  <rect x="50" y="148" width="180" height="45" rx="6" fill="#fff" stroke="#1565c0"/>
+  <text x="140" y="164" text-anchor="middle" font-size="10">BGE-M3 (encodage requete)</text>
+  <text x="140" y="178" text-anchor="middle" font-size="10">+ index lexical (sparse, local)</text>
+  <rect x="50" y="201" width="180" height="35" rx="6" fill="#fff" stroke="#1565c0"/>
+  <text x="140" y="217" text-anchor="middle" font-size="10">.streamlit/secrets.toml</text>
+  <text x="140" y="229" text-anchor="middle" font-size="9" fill="#666">(cle LiteLLM + tunnel)</text>
 
   <!-- SSH tunnel -->
   <rect x="290" y="100" width="140" height="50" rx="8" fill="#fce4ec" stroke="#ad1457" stroke-dasharray="5,3"/>
   <text x="360" y="120" text-anchor="middle" font-size="11">Tunnel SSH</text>
   <text x="360" y="135" text-anchor="middle" font-size="10">(ports 8000 + 4000)</text>
-  <line x1="250" y1="125" x2="288" y2="125" stroke="#555" stroke-width="2" marker-end="url(#arrow3)"/>
+  <line x1="250" y1="118" x2="288" y2="118" stroke="#555" stroke-width="2" marker-end="url(#arrow3)"/>
+
+  <!-- Admin-only corpus build, run from a laptop via the tunnel, not a service on Machine A -->
+  <rect x="265" y="225" width="190" height="105" rx="8" fill="#e8f5e9" stroke="#2e7d32" stroke-dasharray="5,3"/>
+  <text x="360" y="245" text-anchor="middle" font-size="11" font-weight="bold">rebuild_corpus.py</text>
+  <text x="360" y="260" text-anchor="middle" font-size="9" fill="#444">(admin, via the same tunnel --</text>
+  <text x="360" y="272" text-anchor="middle" font-size="9" fill="#444">not a service on Machine A)</text>
+  <text x="360" y="288" text-anchor="middle" font-size="9">crawl -&gt; chunk -&gt; embed</text>
+  <text x="360" y="300" text-anchor="middle" font-size="9">(BGE-M3), then push to Chroma</text>
+  <text x="360" y="315" text-anchor="middle" font-size="9" fill="#666">over HTTP</text>
 
   <!-- Remote server box -->
   <rect x="470" y="55" width="400" height="360" rx="12" fill="#f5f5f5" stroke="#333" stroke-width="2"/>
@@ -31,7 +49,7 @@
   <rect x="500" y="95" width="150" height="70" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
   <text x="575" y="118" text-anchor="middle" font-size="11">ChromaDB server</text>
   <text x="575" y="133" text-anchor="middle" font-size="10">(chroma run, port 8000)</text>
-  <text x="575" y="148" text-anchor="middle" font-size="10">dense + sparse vectors</text>
+  <text x="575" y="148" text-anchor="middle" font-size="10">dense vectors only</text>
 
   <!-- LiteLLM proxy -->
   <rect x="700" y="95" width="150" height="70" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
@@ -50,22 +68,23 @@
   <text x="775" y="328" text-anchor="middle" font-size="11">PostgreSQL</text>
   <text x="775" y="343" text-anchor="middle" font-size="10">cles + logs LiteLLM</text>
 
-  <!-- Corpus -->
-  <rect x="500" y="200" width="150" height="70" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
-  <text x="575" y="223" text-anchor="middle" font-size="11">Corpus indexe</text>
-  <text x="575" y="238" text-anchor="middle" font-size="10">rebuild_corpus.py</text>
-  <text x="575" y="252" text-anchor="middle" font-size="10">(BGE-M3, crawl -&gt; chunk -&gt; embed)</text>
+  <text x="575" y="230" text-anchor="middle" font-size="9" fill="#999">(pas de service de build</text>
+  <text x="575" y="243" text-anchor="middle" font-size="9" fill="#999">local -- corpus recu via HTTP)</text>
 
   <!-- arrows within remote server -->
   <line x1="775" y1="165" x2="775" y2="198" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
-  <line x1="775" y1="270" x2="775" y2="303" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
-  <line x1="650" y1="235" x2="698" y2="235" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
+  <path d="M 850 160 C 862 200, 862 290, 850 325" fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
 
-  <!-- tunnel to services -->
-  <line x1="430" y1="125" x2="573" y2="125" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow3)"/>
-  <path d="M 430 125 C 500 95, 600 95, 698 125" fill="none" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow3)"/>
+  <!-- admin corpus build -> Chroma, over the same tunnel/HTTP path -->
+  <path d="M 400 225 C 430 190, 470 165, 498 155" fill="none" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowGreen)"/>
+
+  <!-- tunnel to services (participant query traffic): endpoints moved off the box centers so the
+       dashed line no longer cuts through the "ChromaDB server" / "LiteLLM proxy" text -->
+  <path d="M 430 118 C 460 100, 480 100, 500 102" fill="none" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrowPink)"/>
+  <path d="M 430 125 C 500 95, 600 95, 698 118" fill="none" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrowPink)"/>
 
   <text x="670" y="400" text-anchor="middle" font-size="10" fill="#666">manage_remote_rag.sh (Chroma+tunnel)   /   manage_litellm.sh (proxy+DB+cles)</text>
 
-  <text x="450" y="440" text-anchor="middle" font-size="10" fill="#999">Le laptop ne parle qu'a Chroma (8000) et LiteLLM (4000), jamais directement a Ollama ou Postgres</text>
+  <text x="450" y="440" text-anchor="middle" font-size="10" fill="#999">Le laptop (participant ou admin) ne parle qu'a Chroma (8000) et LiteLLM (4000) via le tunnel,</text>
+  <text x="450" y="455" text-anchor="middle" font-size="10" fill="#999">jamais directement a Ollama ou Postgres. Le calcul sparse (lexical) reste local, cote laptop.</text>
 </svg>

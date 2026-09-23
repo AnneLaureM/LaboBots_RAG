@@ -19,6 +19,7 @@ import sys
 import time
 import json
 import pickle
+import hashlib
 import urllib.robotparser as robotparser
 from urllib.parse import urljoin, urlparse, urlunparse, parse_qsl, urlencode
 from typing import List
@@ -250,12 +251,50 @@ def _load_pickle_cache(path):
         return None
 
 
+def _fingerprint(parts) -> str:
+    '''A stable content hash over an ordered sequence of strings. Used to validate that a cached
+    stage's output still matches its *current* input content -- not just its length or the set of
+    URLs it covers, both of which stay identical if a page's text changed without its URL changing
+    (e.g. a re-crawl after the site was edited), silently letting a stale cache look "valid".'''
+    h = hashlib.sha256()
+    for part in parts:
+        h.update(part.encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
+def _pages_fingerprint(pages) -> str:
+    ordered = sorted(pages, key=lambda p: p["url"])
+    return _fingerprint(f"{p['url']}\x01{p.get('text', '')}" for p in ordered)
+
+
+def _chunks_fingerprint(chunks) -> str:
+    return _fingerprint(f"{c.chunk_id}\x01{c.embed_text}" for c in chunks)
+
+
+def _read_fingerprint(path):
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
+
+def _write_fingerprint(path, value):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(value)
+
+
 def main():
     live_corpus_path = os.path.join(CORPUS_DIR, "corpus_live_sample.json")
     chunks_path = os.path.join(CORPUS_DIR, "chunks.pkl")
     page_text_path = os.path.join(CORPUS_DIR, "page_full_text_by_url.pkl")
     emb_path = os.path.join(CORPUS_DIR, "embeddings.npz")
     lex_path = os.path.join(CORPUS_DIR, "lexical_weights.pkl")
+    chunks_fp_path = os.path.join(CORPUS_DIR, "chunks_fingerprint.txt")
+    emb_fp_path = os.path.join(CORPUS_DIR, "embeddings_fingerprint.txt")
 
     print("=== Step 1: crawl ===", flush=True)
     raw_pages = None if FORCE_RECRAWL else _load_json_cache(live_corpus_path)
@@ -270,15 +309,18 @@ def main():
             json.dump(raw_pages, f, ensure_ascii=False, indent=2)
 
     print("\n=== Step 2: chunk ===", flush=True)
-    current_urls = {p["url"] for p in raw_pages}
+    current_pages_fp = _pages_fingerprint(raw_pages)
     all_chunks = None if FORCE_RECHUNK else _load_pickle_cache(chunks_path)
     page_full_text_by_url = None if FORCE_RECHUNK else _load_pickle_cache(page_text_path)
     if all_chunks is not None and page_full_text_by_url is not None:
-        cached_urls = {c.source_url for c in all_chunks}
-        if cached_urls != current_urls:
+        cached_pages_fp = _read_fingerprint(chunks_fp_path)
+        if cached_pages_fp != current_pages_fp:
+            # Content fingerprint, not just URL set or page count: a page can be re-crawled with
+            # edited text under the *same* URL, which a same-URLs/same-count check would miss and
+            # silently keep serving chunks built from the old text.
             print(
-                f"Cached chunks cover {len(cached_urls)} URLs but the crawl now has "
-                f"{len(current_urls)} -- stale (crawl changed since these were built). Re-chunking.",
+                "Cached chunks don't match the current crawl's content (URLs, text, or count "
+                "changed since these were built) -- stale. Re-chunking.",
                 flush=True,
             )
             all_chunks = None
@@ -314,8 +356,10 @@ def main():
             pickle.dump(all_chunks, f)
         with open(page_text_path, "wb") as f:
             pickle.dump(page_full_text_by_url, f)
+        _write_fingerprint(chunks_fp_path, current_pages_fp)
 
     print("\n=== Step 3: embed (BGE-M3) ===", flush=True)
+    current_chunks_fp = _chunks_fingerprint(all_chunks)
     cached_dense_raw = None
     if not FORCE_REEMBED and os.path.exists(emb_path) and os.path.exists(lex_path):
         try:
@@ -326,8 +370,14 @@ def main():
             cached_dense_raw = None
             cached_sparse_raw = None
         else:
+            cached_chunks_fp = _read_fingerprint(emb_fp_path)
             if cached_sparse_raw is None or cached_dense_raw.shape[0] != len(all_chunks) \
-                    or len(cached_sparse_raw) != len(all_chunks):
+                    or len(cached_sparse_raw) != len(all_chunks) \
+                    or cached_chunks_fp != current_chunks_fp:
+                # Fingerprint catches same-count-but-different-content too (e.g. chunking logic
+                # changed, or chunks were rebuilt from different pages but happened to total the
+                # same number) -- a pure count comparison would wrongly accept that as valid and
+                # pair the new chunks with someone else's dense/sparse vectors.
                 print(
                     f"Cached embeddings don't match the current {len(all_chunks)} chunks -- "
                     "stale or partial. Re-embedding.",
@@ -358,6 +408,7 @@ def main():
         np.savez_compressed(emb_path, dense=dense_embeddings)
         with open(lex_path, "wb") as f:
             pickle.dump(sparse_weights, f)
+        _write_fingerprint(emb_fp_path, current_chunks_fp)
         print("Dense embeddings shape:", dense_embeddings.shape, flush=True)
 
     print("\n=== Step 4: repopulate remote Chroma ===", flush=True)

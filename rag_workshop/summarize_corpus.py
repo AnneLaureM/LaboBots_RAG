@@ -17,6 +17,7 @@ Writes: rag_workshop/corpus/chunk_summaries.json (human-readable: chunk id, page
 Run with:  python3 rag_workshop/summarize_corpus.py   (from the repo root, with Ollama running
 locally and rag_workshop/corpus/chunks.pkl already built)
 """
+import hashlib
 import json
 import os
 import pickle
@@ -76,6 +77,30 @@ Passage:
 {chunk_text}
 
 Information-dense summary (4-8 sentences, 90-180 words, maximum 200 words):'''
+
+
+def content_fingerprint(chunk) -> str:
+    '''Identifies a cached summary by what actually produced it -- the chunk's own text, the
+    model, and the prompt -- not just its chunk_id. chunk_id is positional (doc{idx}_chunk{i},
+    see rebuild_corpus.py), so it can point at different underlying text after a re-crawl changes
+    page order or content; keying the cache on chunk_id alone would then silently hand back a
+    summary of the *old* text for a *new* chunk sharing the same id.'''
+    h = hashlib.sha256()
+    for part in (chunk.chunk_id, chunk.text, GENERATION_MODEL, SUMMARY_PROMPT):
+        h.update(part.encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
+def cache_entry_is_valid(chunk, record) -> bool:
+    '''True if a cached record can be reused for this chunk. Records written before fingerprinting
+    existed have no "content_fingerprint" -- for those, fall back to comparing the stored raw text
+    directly, so upgrading to this check doesn't force a full, expensive recompute of an
+    already-built production cache; only entries that actually disagree with the current chunk
+    get recomputed.'''
+    if "content_fingerprint" in record:
+        return record["content_fingerprint"] == content_fingerprint(chunk)
+    return record.get("text") == chunk.text
 
 
 def summarize_chunk(chunk_text: str, keep_alive=None) -> str:
@@ -153,7 +178,10 @@ def main():
     scope_label = "full corpus" if SUMMARY_MAX_CHUNKS is None else f"top {SUMMARY_MAX_CHUNKS} chunks"
 
     cached_records, cached_vectors = load_summary_cache()
-    n_cached = sum(1 for c in summary_subset if c.chunk_id in cached_vectors)
+    n_cached = sum(
+        1 for c in summary_subset
+        if c.chunk_id in cached_vectors and cache_entry_is_valid(c, cached_records[c.chunk_id])
+    )
     print(f"Summarizing {len(summary_subset)} of {len(all_chunks)} chunks ({scope_label})... "
           f"{n_cached} already cached.")
 
@@ -161,7 +189,8 @@ def main():
     interrupted = False
     try:
         for c in tqdm(summary_subset, desc="Summarizing + extracting keywords"):
-            if c.chunk_id in cached_vectors:
+            if c.chunk_id in cached_vectors and cache_entry_is_valid(c, cached_records[c.chunk_id]):
+                cached_records[c.chunk_id].setdefault("content_fingerprint", content_fingerprint(c))
                 continue
 
             force_unload = UNLOAD_MODEL_EVERY and (newly_computed + 1) % UNLOAD_MODEL_EVERY == 0
@@ -179,6 +208,7 @@ def main():
                 "text": c.text,
                 "summary": summary_text,
                 "keywords": keyword_text,
+                "content_fingerprint": content_fingerprint(c),
             }
             cached_vectors[c.chunk_id] = (encoded[0], encoded[1])
             newly_computed += 1

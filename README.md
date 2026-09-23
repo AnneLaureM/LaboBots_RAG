@@ -81,8 +81,7 @@ Requires Python 3.11 to 3.13; `uv` is the recommended tool. From the workspace r
 
 ```bash
 ./rag_workshop/setup_uv.sh          # one-shot setup: venv, dependencies, Jupyter kernel
-uv sync --extra embeddings          # BGE-M3 (notebook 1, rebuild_corpus.py, both streamlit apps)
-uv sync --extra secure-app          # streamlit_app_secure.py
+uv sync --extra embeddings --extra secure-app   # both extras together -- see below
 ```
 
 Select the kernel `Python (LaboBots RAG workshop)` in VS Code and run project commands with `uv run`.
@@ -90,6 +89,12 @@ The `embeddings` extra installs BGE-M3's dependencies (including `torchvision`, 
 `transformers` lazy-imports some unused vision submodules that reference it -- not used for anything
 in this workshop). The `secure-app` extra installs what `streamlit_app_secure.py` needs (`Authlib`,
 `streamlit-authenticator`, `streamlit-option-menu`).
+
+**Always pass both `--extra` flags together** (as `setup_uv.sh` does): `uv sync` makes the
+environment match exactly what you ask for on that invocation, not an accumulation of previous
+ones, so a later `uv sync --extra secure-app` on its own would remove `embeddings`'s packages
+(FlagEmbedding, torchvision) again, and vice versa. The same applies to `uv sync --locked` with no
+extras -- see notebook 00, Section 0.2, for the full explanation.
 
 ## Building the corpus
 

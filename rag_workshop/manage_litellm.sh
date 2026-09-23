@@ -148,7 +148,7 @@ fi
             schema_path=\$(\"\$HOME/litellm-venv/bin/python\" -c \"import litellm, os; print(os.path.join(os.path.dirname(litellm.__file__), 'proxy', 'schema.prisma'))\"); \
             \"\$HOME/litellm-venv/bin/python\" -m prisma generate --schema=\"\$schema_path\" >/dev/null; \
         fi; \
-        nohup \"\$HOME/litellm-venv/bin/litellm\" --config \"$REMOTE_ROOT/litellm_config.yaml\" --port '$REMOTE_LITELLM_PORT' >\"$REMOTE_ROOT/litellm.log\" 2>&1 < /dev/null & echo \"LiteLLM PID: \$!\"; fi"
+        nohup \"\$HOME/litellm-venv/bin/litellm\" --config \"$REMOTE_ROOT/litellm_config.yaml\" --port '$REMOTE_LITELLM_PORT' --host 127.0.0.1 >\"$REMOTE_ROOT/litellm.log\" 2>&1 < /dev/null & echo \"LiteLLM PID: \$!\"; fi"
 }
 
 stop() {

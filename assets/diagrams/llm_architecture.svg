@@ -5,7 +5,7 @@
     </marker>
   </defs>
   <rect width="900" height="460" fill="#ffffff"/>
-  <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">Architecture d'un LLM (Transformer) — vue simplifiee</text>
+  <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">Architecture d'un LLM (Transformer) — schema simplifie</text>
 
   <!-- Input -->
   <rect x="30" y="200" width="120" height="60" rx="8" fill="#e3f2fd" stroke="#1565c0"/>
@@ -60,7 +60,7 @@
 
   <!-- Loop arrow back to output -> next token appended -->
   <path d="M 810 260 C 810 410, 90 410, 90 262" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-  <text x="450" y="425" text-anchor="middle" font-size="11" fill="#666">le token le plus probable est ajoute au texte, puis tout repasse dans le modele (generation "autoregressive")</text>
+  <text x="450" y="425" text-anchor="middle" font-size="11" fill="#666">un token est choisi selon la strategie de decodage (temperature/top_p/top_k, Section 7.1) puis ajoute, et tout repasse dans le modele (generation "autoregressive")</text>
 
   <text x="450" y="450" text-anchor="middle" font-size="10" fill="#999">Ollama sert ce type de modele en local (ex. llama3.2:3b) — notebook 1, Section 1.0 et 7</text>
 </svg>

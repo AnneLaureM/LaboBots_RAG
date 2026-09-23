@@ -9,13 +9,20 @@ option-menu sidebar (14.2). The retrieval/generation pipeline itself is untouche
 """
 import logging
 import pickle
+from pathlib import Path
 import numpy as np
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 import chromadb
 from FlagEmbedding import BGEM3FlagModel
 from streamlit_option_menu import option_menu
 import requests
 from chunk_types import Chunk  # noqa: F401 -- needed to unpickle chunks.pkl (see notebook 1, 3.3)
+
+# This file's own directory -- data/secrets paths below are anchored here, not to the current
+# working directory, so `streamlit run` finds them the same way regardless of which directory
+# it was launched from (repo root, rag_workshop/, or anywhere else).
+APP_DIR = Path(__file__).resolve().parent
 
 # Streamlit's file watcher walks every loaded module (via transformers, pulled in by
 # BGEM3FlagModel) to find source files to watch, which lazy-imports transformers' optional
@@ -30,10 +37,13 @@ logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(logging.ER
 # --------------------------------------------------------------------------
 REQUIRED_SECRETS = ["chroma_host", "chroma_port", "chroma_collection_name",
                      "litellm_proxy_url", "litellm_model_name", "auth_mode"]
-missing = [k for k in REQUIRED_SECRETS if k not in st.secrets]
+try:
+    missing = [k for k in REQUIRED_SECRETS if k not in st.secrets]
+except StreamlitSecretNotFoundError:
+    missing = REQUIRED_SECRETS  # no secrets.toml at all yet -- treat every key as missing
 if missing:
     st.error(
-        f"Missing secrets: {missing}. Fill in rag_workshop/.streamlit/secrets.toml "
+        f"Missing secrets: {missing}. Fill in {APP_DIR / '.streamlit' / 'secrets.toml'} "
         "(see notebook 2, Section 14.1) before running this app."
     )
     st.stop()
@@ -46,9 +56,10 @@ LITELLM_PROXY_URL = st.secrets["litellm_proxy_url"]
 LITELLM_MODEL_NAME = st.secrets["litellm_model_name"]
 AUTH_MODE = st.secrets["auth_mode"]  # "oidc" or "demo" -- see Section 14.0
 
-LEXICAL_WEIGHTS_PATH = "rag_workshop/corpus/lexical_weights.pkl"
-CHUNKS_PATH = "rag_workshop/corpus/chunks.pkl"
-PAGE_TEXT_PATH = "rag_workshop/corpus/page_full_text_by_url.pkl"
+CORPUS_DIR = APP_DIR / "corpus"
+LEXICAL_WEIGHTS_PATH = CORPUS_DIR / "lexical_weights.pkl"
+CHUNKS_PATH = CORPUS_DIR / "chunks.pkl"
+PAGE_TEXT_PATH = CORPUS_DIR / "page_full_text_by_url.pkl"
 
 EXPAND_TOP_N_TO_FULL_PAGE = 1
 MAX_EXPANDED_CHARS = 3000
