@@ -9,5 +9,5 @@ out="dist/labobots-mail-agent-${version}.xpi"
 
 mkdir -p dist
 rm -f "$out"
-zip -q -r -X "$out" manifest.json background.js icons popup options
+zip -q -r -X "$out" manifest.json background.js icons popup options vendor
 echo "Built $out"

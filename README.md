@@ -35,7 +35,7 @@ LaboBots_RAG/
 ├── 01_hybrid_RAG_from_scratch_sections1-7.ipynb   # single-laptop RAG, from scratch
 ├── 02_distributed_architecture_streamlit_litellm.ipynb  # split across machines + Streamlit
 ├── 03_thunderbird_agent.ipynb   # what an agent is + walkthrough of thunderbird_agent/ below
-├── python_environments_pip_conda_uv_docker.ipynb  # uv-focused env tutorial; Section 0 inits notebooks 1-2's real environment
+├── 00_python_environments_and_uv_project_setup.ipynb  # uv-focused env tutorial; Section 0 inits notebooks 1-2's real environment
 ├── pyproject.toml
 ├── uv.lock
 ├── thunderbird_agent/            # standalone Thunderbird extension -- not a notebook, see 03
@@ -46,6 +46,8 @@ LaboBots_RAG/
 │	├── icons/
 │	├── build.sh                   # packages the extension as dist/*.xpi (gitignored)
 │	└── README.md                  # install/usage instructions for this extension specifically
+├── assets/
+│	└── diagrams/                  # architecture SVGs embedded in notebooks 1-2 (LLM, ChromaDB, dense/sparse vectors)
 └── rag_workshop/
 	├── corpus/                    # scraped pages + generated indexes; all gitignored except .gitkeep-level structure
 	├── chunk_types.py              # shared Chunk dataclass (see "Why chunk_types.py exists" below)
@@ -79,7 +81,7 @@ Requires Python 3.11 to 3.13; `uv` is the recommended tool. From the workspace r
 
 ```bash
 ./rag_workshop/setup_uv.sh          # one-shot setup: venv, dependencies, Jupyter kernel
-uv sync --extra embeddings          # BGE-M3 (notebook 1, rebuild_corpus.py)
+uv sync --extra embeddings          # BGE-M3 (notebook 1, rebuild_corpus.py, both streamlit apps)
 uv sync --extra secure-app          # streamlit_app_secure.py
 ```
 
@@ -176,7 +178,7 @@ built directly via `rebuild_corpus.py`, since there's no matching local copy to 
                                                #   ADMIN_USER=youradminaccount manage_litellm.sh install-db
 ./rag_workshop/manage_litellm.sh start        # prompts for a master key + the DB password from install-db
 ./rag_workshop/manage_litellm.sh status
-./rag_workshop/manage_litellm.sh create-keys --count 36
+./rag_workshop/manage_litellm.sh create-keys --duration 20d --budget 30
 ```
 
 `install-db` is required before the first `create-keys` — LiteLLM's virtual-key management needs a
@@ -189,13 +191,16 @@ generated remotely into `$HOME/rag_workshop/participant-keys.tsv` (mode 600); co
 scp -P 22003 labobots@195.221.220.18:rag_workshop/participant-keys.tsv .
 ```
 
-**Keys expire after 8h** (`duration` hardcoded in `create_keys()`). For a multi-day event, re-run
-`create-keys` each morning — it's idempotent: it deletes any existing key sharing the same alias
-before creating the new one, so re-running with the same `--count`/`--prefix` just refreshes the
-same `participant-01`..`participant-N` aliases instead of failing on "alias already exists". If
-you'd rather generate once for the whole event, raise the `"duration":"8h"` value in the script
-before running `create-keys` (e.g. `"96h"` to cover a 4-day school) — lower is safer if a key might
-leak (screen share, copy-paste in chat), higher means less day-to-day re-running.
+**Keys default to 8h** (`--duration 8h`), overridable per call, e.g. `--duration 20d` for a
+multi-day event so you don't have to regenerate every morning — lower is safer if a key might leak
+(screen share, copy-paste in chat), higher means less day-to-day re-running. `--budget` (default
+`5`, in USD) is independent of duration — raise it too for a longer-lived key, or it may run out
+well before the key itself expires. `create-keys` is idempotent: it deletes any existing key
+sharing the same alias before creating the new one, so re-running with the same
+`--count`/`--prefix` just refreshes the same `participant-01`..`participant-N` aliases instead of
+failing on "alias already exists" — but note this **invalidates every previously issued key for
+that alias**, including any already copied into a `secrets.toml` or the Thunderbird extension's
+Options page; re-distribute the refreshed `participant-keys.tsv` after every re-run.
 
 **What gets logged**: LiteLLM records every request's full prompt and response in Postgres by
 default, tied to the calling key (`LiteLLM_SpendLogs` table) — useful for reviewing the workshop

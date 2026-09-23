@@ -85,6 +85,100 @@ async function getMessageBody(messageId) {
   return html ? htmlToPlainText(html) : "(could not extract a readable body)";
 }
 
+// --------------------------------------------------------------------------
+// Attachments: text files are read directly; PDFs are parsed with a vendored copy of pdf.js
+// (see vendor/pdfjs/README.md). Anything else (images, office docs, archives...) is only
+// *noticed* -- named in the prompt, never guessed at -- since we have no reliable way to read it.
+// --------------------------------------------------------------------------
+
+const ATTACHMENT_TEXT_MAX_CHARS = 4000; // per attachment, so one huge file can't eat the whole prompt
+const ATTACHMENT_PDF_MAX_PAGES = 20; // keeps a long report from stalling a CPU-only local model
+
+const TEXT_ATTACHMENT_EXTENSIONS = [".txt", ".md", ".markdown", ".csv", ".log", ".json", ".yaml", ".yml"];
+
+function isTextAttachment(name, contentType) {
+  if (contentType && contentType.startsWith("text/")) return true;
+  if (contentType === "application/json") return true;
+  const lower = (name || "").toLowerCase();
+  return TEXT_ATTACHMENT_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function isPdfAttachment(name, contentType) {
+  if (contentType === "application/pdf") return true;
+  return (name || "").toLowerCase().endsWith(".pdf");
+}
+
+// Loaded lazily (only when an email actually has a PDF attachment) and cached across calls --
+// pdf.js is a ~1.8 MB vendored dependency, no reason to pay that cost on every popup open.
+let pdfjsLibPromise = null;
+function loadPdfJs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import(browser.runtime.getURL("vendor/pdfjs/pdf.min.mjs")).then((lib) => {
+      lib.GlobalWorkerOptions.workerSrc = browser.runtime.getURL("vendor/pdfjs/pdf.worker.min.mjs");
+      return lib;
+    });
+  }
+  return pdfjsLibPromise;
+}
+
+async function extractPdfText(bytes) {
+  const pdfjsLib = await loadPdfJs();
+  const doc = await pdfjsLib.getDocument({ data: bytes, isEvalSupported: false }).promise;
+  const pageCount = Math.min(doc.numPages, ATTACHMENT_PDF_MAX_PAGES);
+  const pageTexts = [];
+  for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const content = await page.getTextContent();
+    pageTexts.push(content.items.map((item) => item.str).join(" "));
+  }
+  let text = pageTexts.join("\n\n").trim();
+  if (doc.numPages > pageCount) {
+    text += `\n\n[... ${doc.numPages - pageCount} more page(s) truncated ...]`;
+  }
+  return text;
+}
+
+/**
+ * Reads every attachment on a message and returns one summary entry each: `textIncluded` says
+ * whether its content made it into `text` (and therefore into the LLM prompt later); `note`
+ * explains why not, for attachments we only notice by name (images, office docs, a scanned PDF
+ * with no extractable text layer, a read error...). Never throws -- one bad attachment shouldn't
+ * block drafting a reply about the rest of the email.
+ */
+async function getAttachmentsWithText(messageId) {
+  const list = await browser.messages.listAttachments(messageId);
+  const results = [];
+  for (const att of list) {
+    const info = { name: att.name, contentType: att.contentType || "", textIncluded: false, text: "", note: "" };
+    try {
+      if (isTextAttachment(att.name, att.contentType)) {
+        const file = await browser.messages.getAttachmentFile(messageId, att.partName);
+        info.text = (await file.text()).slice(0, ATTACHMENT_TEXT_MAX_CHARS);
+        info.textIncluded = info.text.trim().length > 0;
+      } else if (isPdfAttachment(att.name, att.contentType)) {
+        const file = await browser.messages.getAttachmentFile(messageId, att.partName);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        info.text = (await extractPdfText(bytes)).slice(0, ATTACHMENT_TEXT_MAX_CHARS);
+        info.textIncluded = info.text.trim().length > 0;
+        if (!info.textIncluded) info.note = "no extractable text (likely a scanned/image-only PDF)";
+      } else {
+        info.note = "not a text file or PDF -- not read";
+      }
+    } catch (err) {
+      info.note = `could not read this attachment (${err.message})`;
+    }
+    results.push(info);
+  }
+  return results;
+}
+
+function buildAttachmentsContext(attachments) {
+  const withText = (attachments || []).filter((a) => a.textIncluded && a.text.trim());
+  if (withText.length === 0) return "";
+  const blocks = withText.map((a) => `--- Attachment: ${a.name} ---\n${a.text}`).join("\n\n");
+  return `\n\nThe email has the following attachment(s); their content is included below -- use it as additional context for the reply if relevant:\n\n${blocks}`;
+}
+
 async function getDisplayedEmail(tabId) {
   // The popup passes the id of the tab it was opened from: the background page has no "current
   // tab" of its own, and getDisplayedMessage() needs to know which tab's message to read.
@@ -93,11 +187,13 @@ async function getDisplayedEmail(tabId) {
     throw new Error("No single message is currently displayed. Open (or select) one email first.");
   }
   const body = await getMessageBody(message.id);
+  const attachments = await getAttachmentsWithText(message.id);
   return {
     messageId: message.id,
     subject: message.subject,
     from: message.author,
     body: body.slice(0, 6000), // keep the prompt a reasonable size for a small local model
+    attachments,
   };
 }
 
@@ -162,13 +258,14 @@ async function callLiteLLM(settings, messages) {
 async function generateDraft({ email, steeringPrompt, backend }) {
   const settings = await getSettings();
   const historyContext = buildHistoryContext(settings.history);
+  const attachmentsContext = buildAttachmentsContext(email.attachments);
 
   const userPrompt = `Original email
 From: ${email.from}
 Subject: ${email.subject}
 
 ${email.body}
-
+${attachmentsContext}
 ---
 ${steeringPrompt ? `Steering instructions from the user: ${steeringPrompt}` : "No specific steering instructions -- use your best judgment for a reasonable reply."}${historyContext}
 

@@ -60,7 +60,10 @@ this Thunderbird profile's local extension storage (see the notebook's "memory" 
 ## Use
 
 1. Open an email.
-2. Click the LaboBots Mail Agent icon.
+2. Click the LaboBots Mail Agent icon. If the email has attachments, the popup lists each one
+   with an icon showing whether its content will be used: 📄 text/PDF (content included), 🖼️
+   image (not read), 📎 anything else (not read). No extra step needed — readable attachments are
+   folded into the prompt automatically.
 3. Pick **Local** or **Remote**, optionally add steering instructions (tone, what to say, length),
    click **Generate draft**.
 4. Edit the draft inline if you want, then **Insert into reply** — this opens Thunderbird's own
@@ -68,12 +71,28 @@ this Thunderbird profile's local extension storage (see the notebook's "memory" 
    where Thunderbird normally puts them. Review, then hit **Send** yourself — the extension never
    sends anything on its own.
 
+## Attachments
+
+`background.js`'s `getAttachmentsWithText()` reads two kinds of attachments directly, so the
+draft can reference their actual content, not just their filename:
+
+- **Text-like files** (`.txt`, `.md`, `.csv`, `.log`, `.json`, `.yaml`, or any `text/*` /
+  `application/json` MIME type) — read verbatim via the File API, capped at 4000 characters each.
+- **PDFs** — text is extracted with a vendored copy of [pdf.js](vendor/pdfjs/README.md) (Mozilla's
+  own PDF engine, Apache-2.0, bundled locally so the extension keeps working fully offline and
+  never loads code from a remote CDN), capped at 20 pages and 4000 characters.
+
+Anything else (images, `.docx`/`.xlsx`, archives, a scanned/image-only PDF with no text layer) is
+only *noticed* — named in the popup and mentioned to the model by filename — never guessed at,
+since there's no reliable way to read it here. No OCR.
+
 ## Known limitations (see the notebook for the "why")
 
 - Body extraction from the MIME tree is a simplified walker (`background.js`,
   `extractBodyFromPart`) — good enough for typical plain-text/HTML emails, not a full MIME parser.
+- Attachment support is text files + PDFs only (see above) — no OCR, no Office formats.
 - The popup closes if you click elsewhere in Thunderbird; a draft being generated is then lost.
 - No streaming: the popup blocks until the full draft is generated (can be slow on a CPU-only
-  local model for a long email).
+  local model for a long email, more so with a multi-page PDF attached).
 - History used for style context is a flat local list, not a real embedding-based memory — see
   the notebook's discussion of why that's a deliberate scope choice for this workshop.

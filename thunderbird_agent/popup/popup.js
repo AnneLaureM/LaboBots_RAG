@@ -41,13 +41,27 @@ async function init() {
     return;
   }
   currentEmail = emailResp.data;
-  emailSummaryEl.innerHTML = `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}`;
+  emailSummaryEl.innerHTML =
+    `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}` +
+    attachmentsSummaryHtml(currentEmail.attachments);
 }
 
 function escapeHtml(s) {
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
+}
+
+function attachmentsSummaryHtml(attachments) {
+  if (!attachments || attachments.length === 0) return "";
+  const items = attachments
+    .map((a) => {
+      const icon = a.textIncluded ? "📄" : a.contentType.startsWith("image/") ? "🖼️" : "📎";
+      const status = a.textIncluded ? "content included" : a.note || "not read";
+      return `<li>${icon} ${escapeHtml(a.name)} <span class="muted">(${escapeHtml(status)})</span></li>`;
+    })
+    .join("");
+  return `<ul class="attachments">${items}</ul>`;
 }
 
 async function generate() {

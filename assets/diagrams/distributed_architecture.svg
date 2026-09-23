@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+  </defs>
+  <rect width="900" height="460" fill="#ffffff"/>
+  <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">Architecture distribuee — notebook 2</text>
+
+  <!-- Participant laptop -->
+  <rect x="30" y="60" width="220" height="140" rx="10" fill="#e3f2fd" stroke="#1565c0" stroke-width="2"/>
+  <text x="140" y="82" text-anchor="middle" font-size="12" font-weight="bold">Laptop participant</text>
+  <rect x="50" y="95" width="180" height="45" rx="6" fill="#fff" stroke="#1565c0"/>
+  <text x="140" y="114" text-anchor="middle" font-size="11">streamlit_app.py /</text>
+  <text x="140" y="128" text-anchor="middle" font-size="11">streamlit_app_secure.py</text>
+  <rect x="50" y="150" width="180" height="35" rx="6" fill="#fff" stroke="#1565c0"/>
+  <text x="140" y="172" text-anchor="middle" font-size="10">.streamlit/secrets.toml</text>
+  <text x="140" y="184" text-anchor="middle" font-size="9" fill="#666">(cle LiteLLM + tunnel)</text>
+
+  <!-- SSH tunnel -->
+  <rect x="290" y="100" width="140" height="50" rx="8" fill="#fce4ec" stroke="#ad1457" stroke-dasharray="5,3"/>
+  <text x="360" y="120" text-anchor="middle" font-size="11">Tunnel SSH</text>
+  <text x="360" y="135" text-anchor="middle" font-size="10">(ports 8000 + 4000)</text>
+  <line x1="250" y1="125" x2="288" y2="125" stroke="#555" stroke-width="2" marker-end="url(#arrow3)"/>
+
+  <!-- Remote server box -->
+  <rect x="470" y="55" width="400" height="360" rx="12" fill="#f5f5f5" stroke="#333" stroke-width="2"/>
+  <text x="670" y="78" text-anchor="middle" font-size="12" font-weight="bold">Machine distante (Machine A)</text>
+
+  <!-- Chroma server -->
+  <rect x="500" y="95" width="150" height="70" rx="8" fill="#ede7f6" stroke="#5e35b1"/>
+  <text x="575" y="118" text-anchor="middle" font-size="11">ChromaDB server</text>
+  <text x="575" y="133" text-anchor="middle" font-size="10">(chroma run, port 8000)</text>
+  <text x="575" y="148" text-anchor="middle" font-size="10">dense + sparse vectors</text>
+
+  <!-- LiteLLM proxy -->
+  <rect x="700" y="95" width="150" height="70" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
+  <text x="775" y="118" text-anchor="middle" font-size="11">LiteLLM proxy</text>
+  <text x="775" y="133" text-anchor="middle" font-size="10">(port 4000)</text>
+  <text x="775" y="148" text-anchor="middle" font-size="10">cles par participant</text>
+
+  <!-- Ollama LLM -->
+  <rect x="700" y="200" width="150" height="70" rx="8" fill="#ffebee" stroke="#c62828"/>
+  <text x="775" y="223" text-anchor="middle" font-size="11">Ollama</text>
+  <text x="775" y="238" text-anchor="middle" font-size="10">(LLM local sur la</text>
+  <text x="775" y="252" text-anchor="middle" font-size="10">machine distante)</text>
+
+  <!-- Postgres -->
+  <rect x="700" y="305" width="150" height="60" rx="8" fill="#e8eaf6" stroke="#3949ab"/>
+  <text x="775" y="328" text-anchor="middle" font-size="11">PostgreSQL</text>
+  <text x="775" y="343" text-anchor="middle" font-size="10">cles + logs LiteLLM</text>
+
+  <!-- Corpus -->
+  <rect x="500" y="200" width="150" height="70" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="575" y="223" text-anchor="middle" font-size="11">Corpus indexe</text>
+  <text x="575" y="238" text-anchor="middle" font-size="10">rebuild_corpus.py</text>
+  <text x="575" y="252" text-anchor="middle" font-size="10">(BGE-M3, crawl -&gt; chunk -&gt; embed)</text>
+
+  <!-- arrows within remote server -->
+  <line x1="775" y1="165" x2="775" y2="198" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
+  <line x1="775" y1="270" x2="775" y2="303" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
+  <line x1="650" y1="235" x2="698" y2="235" stroke="#555" stroke-width="1.5" marker-end="url(#arrow3)"/>
+
+  <!-- tunnel to services -->
+  <line x1="430" y1="125" x2="573" y2="125" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow3)"/>
+  <path d="M 430 125 C 500 95, 600 95, 698 125" fill="none" stroke="#ad1457" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow3)"/>
+
+  <text x="670" y="400" text-anchor="middle" font-size="10" fill="#666">manage_remote_rag.sh (Chroma+tunnel)   /   manage_litellm.sh (proxy+DB+cles)</text>
+
+  <text x="450" y="440" text-anchor="middle" font-size="10" fill="#999">Le laptop ne parle qu'a Chroma (8000) et LiteLLM (4000), jamais directement a Ollama ou Postgres</text>
+</svg>

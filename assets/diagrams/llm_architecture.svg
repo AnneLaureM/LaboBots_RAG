@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+  </defs>
+  <rect width="900" height="460" fill="#ffffff"/>
+  <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#222">Architecture d'un LLM (Transformer) — vue simplifiee</text>
+
+  <!-- Input -->
+  <rect x="30" y="200" width="120" height="60" rx="8" fill="#e3f2fd" stroke="#1565c0"/>
+  <text x="90" y="225" text-anchor="middle" font-size="12">Texte en</text>
+  <text x="90" y="242" text-anchor="middle" font-size="12">entree (prompt)</text>
+
+  <!-- Tokenizer -->
+  <rect x="185" y="200" width="120" height="60" rx="8" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="245" y="225" text-anchor="middle" font-size="12">Tokenizer</text>
+  <text x="245" y="242" text-anchor="middle" font-size="12">(sous-mots -&gt; IDs)</text>
+
+  <!-- Embedding layer -->
+  <rect x="340" y="200" width="130" height="60" rx="8" fill="#fff3e0" stroke="#ef6c00"/>
+  <text x="405" y="220" text-anchor="middle" font-size="12">Embedding layer</text>
+  <text x="405" y="236" text-anchor="middle" font-size="12">(token -&gt; vecteur</text>
+  <text x="405" y="252" text-anchor="middle" font-size="12">+ position)</text>
+
+  <!-- Transformer blocks stack -->
+  <g>
+    <rect x="500" y="90" width="200" height="280" rx="10" fill="#ede7f6" stroke="#5e35b1" stroke-width="2"/>
+    <text x="600" y="112" text-anchor="middle" font-size="12" font-weight="bold">Bloc Transformer x N</text>
+
+    <rect x="520" y="128" width="160" height="46" rx="6" fill="#fff" stroke="#5e35b1"/>
+    <text x="600" y="148" text-anchor="middle" font-size="11">Self-Attention</text>
+    <text x="600" y="163" text-anchor="middle" font-size="10">(multi-head)</text>
+
+    <rect x="520" y="184" width="160" height="30" rx="6" fill="#f3e5f5" stroke="#5e35b1"/>
+    <text x="600" y="203" text-anchor="middle" font-size="10">Add &amp; Norm</text>
+
+    <rect x="520" y="224" width="160" height="46" rx="6" fill="#fff" stroke="#5e35b1"/>
+    <text x="600" y="244" text-anchor="middle" font-size="11">Feed-Forward</text>
+    <text x="600" y="259" text-anchor="middle" font-size="10">(MLP)</text>
+
+    <rect x="520" y="280" width="160" height="30" rx="6" fill="#f3e5f5" stroke="#5e35b1"/>
+    <text x="600" y="299" text-anchor="middle" font-size="10">Add &amp; Norm</text>
+
+    <text x="600" y="335" text-anchor="middle" font-size="20" fill="#5e35b1">&#8942;</text>
+    <text x="600" y="358" text-anchor="middle" font-size="10" fill="#555">repete N fois (ex: 32 couches)</text>
+  </g>
+
+  <!-- Output -->
+  <rect x="750" y="200" width="120" height="60" rx="8" fill="#ffebee" stroke="#c62828"/>
+  <text x="810" y="222" text-anchor="middle" font-size="12">Distribution de</text>
+  <text x="810" y="238" text-anchor="middle" font-size="12">probabilite sur</text>
+  <text x="810" y="254" text-anchor="middle" font-size="12">le vocabulaire</text>
+
+  <!-- Arrows -->
+  <line x1="150" y1="230" x2="183" y2="230" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="305" y1="230" x2="338" y2="230" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="470" y1="230" x2="498" y2="230" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="700" y1="230" x2="748" y2="230" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Loop arrow back to output -> next token appended -->
+  <path d="M 810 260 C 810 410, 90 410, 90 262" fill="none" stroke="#888" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="450" y="425" text-anchor="middle" font-size="11" fill="#666">le token le plus probable est ajoute au texte, puis tout repasse dans le modele (generation "autoregressive")</text>
+
+  <text x="450" y="450" text-anchor="middle" font-size="10" fill="#999">Ollama sert ce type de modele en local (ex. llama3.2:3b) — notebook 1, Section 1.0 et 7</text>
+</svg>
