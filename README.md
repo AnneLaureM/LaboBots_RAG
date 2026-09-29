@@ -305,3 +305,12 @@ notebook cell, or the Streamlit sidebar's "Connected to remote vector store (N c
 `rag_workshop/chroma_db/` — all already covered by `.gitignore`. Treat `participant-keys.tsv` and
 `participant-secrets/` as sensitive even though they're ignored, and never print master keys or
 database passwords in commands, logs, or error messages.
+
+## License
+
+This project is licensed under the GNU Affero General Public License, version 3 only
+(`AGPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
+
+Bundled third-party components retain their own licenses. In particular,
+[PDF.js](thunderbird_agent/vendor/pdfjs/README.md) is licensed under the
+[Apache License 2.0](thunderbird_agent/vendor/pdfjs/LICENSE).
