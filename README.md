@@ -224,6 +224,8 @@ bcrypt-hashed demo password.
 
 ```bash
 python3 rag_workshop/create_demo_accounts.py
+cp rag_workshop/participant-secrets/participant-01.toml rag_workshop/.streamlit/secrets.toml
+streamlit run rag_workshop/streamlit_app_secure.py
 ```
 
 Reads `participant-keys.tsv` (repo root) and writes, per participant, into

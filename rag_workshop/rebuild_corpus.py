@@ -52,7 +52,7 @@ BATCH_SIZE = 8
 # already exist, aren't corrupted, and match the current corpus (see the per-stage checks in
 # main()). Flip one to True to force that stage to redo its work regardless of what's cached --
 # e.g. after editing the crawl/chunk logic itself, or to refresh a corpus that changed upstream.
-FORCE_RECRAWL = False
+FORCE_RECRAWL = True
 FORCE_RECHUNK = False
 FORCE_REEMBED = False
 
