@@ -10,37 +10,95 @@
     <h1>LaboBots Mail Agent</h1>
   </header>
 
-  <div id="email-summary" class="box muted">Loading the current email...</div>
-
-  <div id="controls">
-    <label class="field">
-      <span>Backend</span>
-      <select id="backend">
-        <option value="local">Local (Ollama, on this machine)</option>
-        <option value="remote">Remote (LiteLLM proxy, shared server)</option>
-      </select>
-    </label>
-
-    <label class="field">
-      <span>Steering instructions (optional)</span>
-      <textarea id="steering" rows="3" placeholder="e.g. politely decline, ask for the SLURM job ID, keep it to two sentences..."></textarea>
-    </label>
-
-    <button id="generate-btn" class="primary">Generate draft</button>
+  <div id="mode-tabs" class="tabs">
+    <button id="tab-reply" class="tab active" type="button">Reply</button>
+    <button id="tab-new" class="tab" type="button">New email</button>
   </div>
 
-  <div id="status" class="muted" hidden></div>
+  <section id="reply-section">
+    <div id="email-summary" class="box muted">Loading the current email...</div>
 
-  <div id="draft-area" hidden>
-    <label class="field">
-      <span>Draft (edit freely before inserting)</span>
-      <textarea id="draft-text" rows="8"></textarea>
-    </label>
-    <div class="actions">
-      <button id="regenerate-btn">Regenerate</button>
-      <button id="insert-btn" class="primary">Insert into reply</button>
+    <div id="controls">
+      <label class="field">
+        <span>Backend</span>
+        <select id="backend">
+          <option value="local">Local (Ollama, on this machine)</option>
+          <option value="remote">Remote (LiteLLM proxy, shared server)</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Steering instructions (optional)</span>
+        <textarea id="steering" rows="3" placeholder="e.g. politely decline, ask for the SLURM job ID, keep it to two sentences..."></textarea>
+      </label>
+
+      <button id="generate-btn" class="primary">Generate draft</button>
     </div>
-  </div>
+
+    <div id="status" class="muted" hidden></div>
+
+    <div id="draft-area" hidden>
+      <label class="field">
+        <span>Draft (edit freely before inserting)</span>
+        <textarea id="draft-text" rows="8"></textarea>
+      </label>
+      <div class="actions">
+        <button id="regenerate-btn">Regenerate</button>
+        <button id="insert-btn" class="primary">Insert into reply</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="new-section" hidden>
+    <div class="box muted">
+      Describe the email you want. The LLM writes a first draft that opens in a real Thunderbird
+      compose window -- review and edit it there before sending, same as a reply draft.
+    </div>
+
+    <div id="new-controls">
+      <label class="field">
+        <span>To (optional, comma-separated)</span>
+        <input id="new-to" type="text" placeholder="name@example.org">
+      </label>
+
+      <label class="field">
+        <span>Subject (optional -- leave blank to let the LLM suggest one)</span>
+        <input id="new-subject" type="text" placeholder="">
+      </label>
+
+      <label class="field">
+        <span>Backend</span>
+        <select id="new-backend">
+          <option value="local">Local (Ollama, on this machine)</option>
+          <option value="remote">Remote (LiteLLM proxy, shared server)</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>What should this email say?</span>
+        <textarea id="new-steering" rows="4" placeholder="e.g. ask the registrar for a one-week extension on the workshop sign-up, friendly but to the point..."></textarea>
+      </label>
+
+      <button id="new-generate-btn" class="primary">Generate draft</button>
+    </div>
+
+    <div id="new-status" class="muted" hidden></div>
+
+    <div id="new-draft-area" hidden>
+      <label class="field">
+        <span>Subject</span>
+        <input id="new-draft-subject" type="text">
+      </label>
+      <label class="field">
+        <span>Draft (edit freely before inserting)</span>
+        <textarea id="new-draft-text" rows="8"></textarea>
+      </label>
+      <div class="actions">
+        <button id="new-regenerate-btn">Regenerate</button>
+        <button id="new-insert-btn" class="primary">Open in compose window</button>
+      </div>
+    </div>
+  </section>
 
   <footer>
     <a id="options-link" href="#">Settings</a>

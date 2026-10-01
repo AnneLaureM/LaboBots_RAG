@@ -47,6 +47,48 @@
   </section>
 
   <section>
+    <h2>Mailbox knowledge base (local RAG)</h2>
+    <p class="muted">
+      Indexes every folder of the selected account (or every account, if left on "All accounts")
+      locally, so drafts can pull in relevant context from past emails. This
+      <strong>always</strong> runs through local Ollama for embeddings, never through the
+      Remote/LiteLLM proxy, regardless of which backend you pick for drafting -- your mailbox never
+      leaves this machine for this feature. On Thunderbird versions older than 121, automatic
+      indexing only covers inbox-type folders as mail arrives; the periodic pull below is what
+      covers every other folder.
+    </p>
+    <p class="muted">
+      Narrowing to one account immediately stops its context from being used in drafts, even for
+      anything already indexed from other accounts -- but it won't delete that old data from disk.
+      Use <strong>Clear index</strong> below if you want to remove it for good before re-running
+      <strong>Pull now</strong>.
+    </p>
+    <label class="field checkbox-field">
+      <input id="rag-enabled" type="checkbox">
+      <span>Enable mailbox knowledge base</span>
+    </label>
+    <label class="field">
+      <span>Account to index</span>
+      <select id="rag-account">
+        <option value="">All accounts</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Embedding model (Ollama)</span>
+      <input id="rag-embed-model" type="text" placeholder="nomic-embed-text">
+    </label>
+    <label class="field">
+      <span>Automatic pull interval (minutes)</span>
+      <input id="rag-pull-interval" type="number" min="5" step="5" placeholder="60">
+    </label>
+    <div id="rag-status" class="box muted">Not indexed yet.</div>
+    <div class="actions">
+      <button id="rag-pull-now">Pull now</button>
+      <button id="rag-clear-index">Clear index</button>
+    </div>
+  </section>
+
+  <section>
     <h2>Local history</h2>
     <p class="muted">
       Recent drafts are kept locally as style context for future generations (see the notebook's

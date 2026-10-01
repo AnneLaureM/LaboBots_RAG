@@ -14,6 +14,23 @@ const regenerateBtn = document.getElementById("regenerate-btn");
 const insertBtn = document.getElementById("insert-btn");
 const optionsLink = document.getElementById("options-link");
 
+const tabReplyEl = document.getElementById("tab-reply");
+const tabNewEl = document.getElementById("tab-new");
+const replySectionEl = document.getElementById("reply-section");
+const newSectionEl = document.getElementById("new-section");
+
+const newToEl = document.getElementById("new-to");
+const newSubjectEl = document.getElementById("new-subject");
+const newBackendEl = document.getElementById("new-backend");
+const newSteeringEl = document.getElementById("new-steering");
+const newGenerateBtn = document.getElementById("new-generate-btn");
+const newStatusEl = document.getElementById("new-status");
+const newDraftAreaEl = document.getElementById("new-draft-area");
+const newDraftSubjectEl = document.getElementById("new-draft-subject");
+const newDraftTextEl = document.getElementById("new-draft-text");
+const newRegenerateBtn = document.getElementById("new-regenerate-btn");
+const newInsertBtn = document.getElementById("new-insert-btn");
+
 let currentEmail = null;
 
 function send(action, extra = {}) {
@@ -26,18 +43,37 @@ function setStatus(text, isError = false) {
   statusEl.style.color = isError ? "#B91C1C" : "";
 }
 
+function setNewStatus(text, isError = false) {
+  newStatusEl.hidden = !text;
+  newStatusEl.textContent = text;
+  newStatusEl.style.color = isError ? "#B91C1C" : "";
+}
+
+function showTab(tab) {
+  const isReply = tab === "reply";
+  tabReplyEl.classList.toggle("active", isReply);
+  tabNewEl.classList.toggle("active", !isReply);
+  replySectionEl.hidden = !isReply;
+  newSectionEl.hidden = isReply;
+}
+
 async function init() {
   const settingsResp = await send("getSettings");
   if (settingsResp.ok) {
     backendEl.value = settingsResp.data.backend;
+    newBackendEl.value = settingsResp.data.backend;
   }
 
   // The popup knows which tab it was opened from; the background page doesn't.
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   const emailResp = await send("getDisplayedEmail", { tabId: tab && tab.id });
   if (!emailResp.ok) {
+    // No message displayed (e.g. opened from the permanent toolbar button rather than a message
+    // view) -- there is nothing to reply to, so go straight to "New email" and hide the Reply tab.
     emailSummaryEl.textContent = emailResp.error;
     generateBtn.disabled = true;
+    tabReplyEl.disabled = true;
+    showTab("new");
     return;
   }
   currentEmail = emailResp.data;
@@ -114,9 +150,66 @@ async function insertReply() {
   window.close(); // the reply is now a real compose tab; nothing more for this popup to do
 }
 
+async function generateNew() {
+  newGenerateBtn.disabled = true;
+  newRegenerateBtn.disabled = true;
+  newDraftAreaEl.hidden = true;
+  setNewStatus("Generating draft... this can take a while on a local CPU model.");
+
+  const backend = newBackendEl.value;
+  browser.storage.local.set({ backend });
+
+  const resp = await send("generateNewEmail", {
+    to: newToEl.value.trim(),
+    subject: newSubjectEl.value.trim(),
+    steeringPrompt: newSteeringEl.value.trim(),
+    backend,
+  });
+
+  newGenerateBtn.disabled = false;
+  newRegenerateBtn.disabled = false;
+
+  if (!resp.ok) {
+    setNewStatus(resp.error, true);
+    return;
+  }
+
+  setNewStatus("");
+  newDraftSubjectEl.value = resp.data.subject;
+  newDraftTextEl.value = resp.data.draft;
+  newDraftAreaEl.hidden = false;
+}
+
+async function insertNewEmail() {
+  newInsertBtn.disabled = true;
+  setNewStatus("Opening the compose window...");
+
+  const resp = await send("acceptNewEmail", {
+    to: newToEl.value.trim(),
+    subject: newDraftSubjectEl.value.trim(),
+    draftText: newDraftTextEl.value,
+    steeringPrompt: newSteeringEl.value.trim(),
+    draft: newDraftTextEl.value,
+  });
+
+  newInsertBtn.disabled = false;
+
+  if (!resp.ok) {
+    setNewStatus(resp.error, true);
+    return;
+  }
+
+  window.close(); // the email is now a real compose tab; nothing more for this popup to do
+}
+
 generateBtn.addEventListener("click", generate);
 regenerateBtn.addEventListener("click", generate);
 insertBtn.addEventListener("click", insertReply);
+newGenerateBtn.addEventListener("click", generateNew);
+newRegenerateBtn.addEventListener("click", generateNew);
+newInsertBtn.addEventListener("click", insertNewEmail);
+tabReplyEl.addEventListener("click", () => showTab("reply"));
+tabNewEl.addEventListener("click", () => showTab("new"));
 optionsLink.addEventListener("click", (e) => {
   e.preventDefault();
   browser.runtime.openOptionsPage();

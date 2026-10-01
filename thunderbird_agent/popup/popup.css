@@ -63,7 +63,7 @@ header h1 {
   margin-bottom: 4px;
 }
 
-select, textarea {
+select, textarea, input[type="text"] {
   width: 100%;
   font-family: inherit;
   font-size: 13px;
@@ -71,6 +71,29 @@ select, textarea {
   border: 1px solid var(--border);
   border-radius: 6px;
   resize: vertical;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 4px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent);
 }
 
 button {

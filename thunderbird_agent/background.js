@@ -4,8 +4,9 @@
  * Owns everything the popup itself shouldn't: reading the displayed message, calling the LLM
  * (local Ollama or remote LiteLLM proxy -- same two backends as notebooks 1 and 2), keeping a
  * small local "writing style" history, and inserting the generated draft into a REAL Thunderbird
- * reply window (via compose.beginReply) so the user's signature and Send button are the native
- * ones -- this extension never sends anything itself.
+ * compose window -- a reply (via compose.beginReply) or a brand-new email (via compose.beginNew)
+ * -- so the user's signature and Send button are the native ones -- this extension never sends
+ * anything itself.
  *
  * All state lives in browser.storage.local (this profile only, never synced/uploaded anywhere
  * except the two LLM endpoints the user configured in Options).
@@ -19,6 +20,11 @@ const DEFAULT_SETTINGS = {
   litellm_model: "workshop-llm",
   litellm_key: "",
   history: [],
+  newEmailHistory: [],
+  ragEnabled: false,
+  ragEmbedModel: "nomic-embed-text",
+  ragPullIntervalMinutes: 60,
+  ragAccountId: "", // "" = all accounts; set to one account's id to scope indexing/search to it
 };
 
 const MAX_HISTORY = 20;
@@ -27,12 +33,25 @@ const MAX_HISTORY_IN_PROMPT = 3; // how many past drafts get folded into the pro
 const DRAFT_SYSTEM_PROMPT = `You are an email-drafting assistant. You will be shown an email and
 asked to draft a reply to it. Rules:
 - Reply in the same language as the original email.
-- Write ONLY the body of the reply -- no "Dear X," greeting line and no sign-off/signature. The
+- Write the body of the reply. The
   user's own Thunderbird signature is added automatically after your text; do not duplicate it.
 - Follow the user's own steering instructions if given (tone, what to say, what to avoid, length).
 - Stay concise and professional unless the instructions say otherwise.
 - If reference is made to "previous replies" below, they are only style examples (how this
   person usually writes) -- never repeat their content, just match the tone/register.`;
+
+const NEW_EMAIL_SYSTEM_PROMPT = `You are an email-drafting assistant. You will be asked to compose
+a brand-new email from scratch -- not a reply to anything. Rules:
+- Write in the language the user's instructions are given in, unless told otherwise.
+- Write only the body of the email. The user's own Thunderbird signature is added automatically
+  after your text; do not duplicate it or invent one.
+- Follow the user's instructions for the recipient, purpose, tone, and content.
+- If no subject was given, suggest one as the very first line, exactly in the form
+  "Subject: ...", followed by a blank line and then the body. If a subject was already given,
+  skip straight to the body -- no "Subject:" line.
+- Stay concise and professional unless the instructions say otherwise.
+- If reference is made to "previous emails" below, they are only style examples (how this person
+  usually writes) -- never repeat their content, just match the tone/register.`;
 
 async function getSettings() {
   const stored = await browser.storage.local.get(DEFAULT_SETTINGS);
@@ -204,6 +223,7 @@ async function getDisplayedEmail(tabId) {
   const attachments = await getAttachmentsWithText(message.id);
   return {
     messageId: message.id,
+    headerMessageId: message.headerMessageId,
     subject: message.subject,
     from: message.author,
     body: body.slice(0, 6000), // keep the prompt a reasonable size for a small local model
@@ -211,13 +231,13 @@ async function getDisplayedEmail(tabId) {
   };
 }
 
-function buildHistoryContext(history) {
+function buildHistoryContext(history, label = "reply") {
   const recent = history.slice(-MAX_HISTORY_IN_PROMPT);
   if (recent.length === 0) return "";
   const examples = recent
-    .map((h, i) => `Previous reply example ${i + 1} (style reference only):\n${h.draft}`)
+    .map((h, i) => `Previous ${label} example ${i + 1} (style reference only):\n${h.draft}`)
     .join("\n\n");
-  return `\n\nHere are a few of this user's own previous replies, for style reference only:\n\n${examples}`;
+  return `\n\nHere are a few of this user's own previous ${label}s, for style reference only:\n\n${examples}`;
 }
 
 /**
@@ -273,13 +293,17 @@ async function generateDraft({ email, steeringPrompt, backend }) {
   const settings = await getSettings();
   const historyContext = buildHistoryContext(settings.history);
   const attachmentsContext = buildAttachmentsContext(email.attachments);
+  const ragChunks = settings.ragEnabled
+    ? await Rag.search(email.body, { excludeHeaderMessageId: email.headerMessageId })
+    : [];
+  const ragContext = Rag.buildContextBlock(ragChunks);
 
   const userPrompt = `Original email
 From: ${email.from}
 Subject: ${email.subject}
 
 ${email.body}
-${attachmentsContext}
+${attachmentsContext}${ragContext}
 ---
 ${steeringPrompt ? `Steering instructions from the user: ${steeringPrompt}` : "No specific steering instructions -- use your best judgment for a reasonable reply."}${historyContext}
 
@@ -297,10 +321,51 @@ Draft the reply now.`;
   return draft.trim();
 }
 
+/**
+ * Composes a brand-new email (no originating message), from the user's instructions alone.
+ * Returns { draft, subject }: if the caller left `subject` blank, a leading "Subject: ..." line
+ * the model was asked to produce is split off and returned separately, never left in the body.
+ */
+async function generateNewEmail({ to, subject, steeringPrompt, backend }) {
+  const settings = await getSettings();
+  const historyContext = buildHistoryContext(settings.newEmailHistory || [], "email");
+  const ragChunks = settings.ragEnabled ? await Rag.search(steeringPrompt || subject) : [];
+  const ragContext = Rag.buildContextBlock(ragChunks);
+
+  const userPrompt = `New email to compose (not a reply)
+${to ? `To: ${to}` : "Recipient: not specified -- write generically."}
+${subject ? `Subject: ${subject}` : "No subject given -- suggest one, see the Subject: line rule."}
+---
+${steeringPrompt ? `Instructions from the user: ${steeringPrompt}` : "No specific instructions were given -- write a short, polite placeholder email and make clear in the text that it still needs details from the user."}${ragContext}${historyContext}
+
+Write the email now.`;
+
+  const messages = [
+    { role: "system", content: NEW_EMAIL_SYSTEM_PROMPT },
+    { role: "user", content: userPrompt },
+  ];
+
+  const raw = (backend === "remote" ? await callLiteLLM(settings, messages) : await callOllama(settings, messages)).trim();
+
+  if (!subject) {
+    const match = raw.match(/^Subject:\s*(.+?)\s*\n+([\s\S]*)$/i);
+    if (match) {
+      return { draft: match[2].trim(), subject: match[1].trim() };
+    }
+  }
+  return { draft: raw, subject: subject || "" };
+}
+
 async function recordHistory({ subject, steeringPrompt, draft }) {
   const settings = await getSettings();
   const history = [...settings.history, { timestamp: Date.now(), subject, steeringPrompt, draft }];
   await saveSetting({ history: history.slice(-MAX_HISTORY) });
+}
+
+async function recordNewEmailHistory({ subject, steeringPrompt, draft }) {
+  const settings = await getSettings();
+  const newEmailHistory = [...settings.newEmailHistory, { timestamp: Date.now(), subject, steeringPrompt, draft }];
+  await saveSetting({ newEmailHistory: newEmailHistory.slice(-MAX_HISTORY) });
 }
 
 function escapeHtml(s) {
@@ -314,19 +379,21 @@ function draftToHtml(draftText) {
     .join("");
 }
 
-async function insertIntoReply({ messageId, draftText }) {
-  const composeTab = await browser.compose.beginReply(messageId, "replyToSender");
-  // setComposeDetails({body}) REPLACES the whole body, so we first read what Thunderbird put
-  // there (quoted original + the user's signature) and prepend our draft to it. The editor can
-  // still be empty for a moment right after beginReply resolves, hence the short retry loop.
-  let details = await browser.compose.getComposeDetails(composeTab.id);
+/**
+ * setComposeDetails({body}) REPLACES the whole body, so we first read what Thunderbird already
+ * put there (quoted original + the user's signature for a reply; just the signature for a new
+ * email) and prepend our draft to it. The editor can still be empty for a moment right after the
+ * compose tab opens, hence the short retry loop.
+ */
+async function insertDraftIntoComposeTab(composeTabId, draftText) {
+  let details = await browser.compose.getComposeDetails(composeTabId);
   for (let i = 0; i < 10 && !(details.isPlainText ? details.plainTextBody : details.body); i++) {
     await new Promise((r) => setTimeout(r, 200));
-    details = await browser.compose.getComposeDetails(composeTab.id);
+    details = await browser.compose.getComposeDetails(composeTabId);
   }
 
   if (details.isPlainText) {
-    await browser.compose.setComposeDetails(composeTab.id, {
+    await browser.compose.setComposeDetails(composeTabId, {
       plainTextBody: `${draftText}\n\n${details.plainTextBody || ""}`,
     });
   } else {
@@ -335,8 +402,26 @@ async function insertIntoReply({ messageId, draftText }) {
     const body = /<body[^>]*>/i.test(existing)
       ? existing.replace(/<body[^>]*>/i, (tag) => `${tag}${draftHtml}<br>`)
       : draftHtml + existing;
-    await browser.compose.setComposeDetails(composeTab.id, { body });
+    await browser.compose.setComposeDetails(composeTabId, { body });
   }
+}
+
+async function insertIntoReply({ messageId, draftText }) {
+  const composeTab = await browser.compose.beginReply(messageId, "replyToSender");
+  await insertDraftIntoComposeTab(composeTab.id, draftText);
+  return composeTab.id;
+}
+
+async function insertIntoNewCompose({ to, subject, draftText }) {
+  const recipients = (to || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const composeTab = await browser.compose.beginNew({
+    to: recipients,
+    subject: subject || "",
+  });
+  await insertDraftIntoComposeTab(composeTab.id, draftText);
   return composeTab.id;
 }
 
@@ -367,6 +452,7 @@ async function handleMessage(message) {
       return getSettings();
     case "saveSettings":
       await saveSetting(message.settings);
+      await Rag.onSettingsChanged(message.settings);
       return null;
     case "generateDraft":
       return { draft: await generateDraft(message) };
@@ -375,6 +461,21 @@ async function handleMessage(message) {
       await recordHistory(message);
       return { composeTabId };
     }
+    case "generateNewEmail":
+      return generateNewEmail(message);
+    case "acceptNewEmail": {
+      const composeTabId = await insertIntoNewCompose(message);
+      await recordNewEmailHistory(message);
+      return { composeTabId };
+    }
+    case "ragListAccounts":
+      return Rag.listAccounts();
+    case "ragGetStatus":
+      return Rag.getStatus();
+    case "ragPullNow":
+      return Rag.pullNow();
+    case "ragClearIndex":
+      return Rag.clearIndex();
     default:
       throw new Error(`Unknown action: ${message.action}`);
   }
@@ -387,3 +488,5 @@ browser.runtime.onMessage.addListener((message) =>
     (err) => ({ ok: false, error: err.message || String(err) })
   )
 );
+
+Rag.init().catch((err) => console.error("LaboBots RAG: init failed", err));

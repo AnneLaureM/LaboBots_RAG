@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "LaboBots Mail Agent",
-  "version": "0.3.0",
-  "description": "Draft email replies with a local (Ollama) or remote (LiteLLM proxy) LLM, using the email's own text and PDF attachments as context, inserted directly into Thunderbird's own reply window so your signature and Send button just work.",
+  "version": "0.5.0",
+  "description": "Draft email replies -- or brand-new emails -- with a local (Ollama) or remote (LiteLLM proxy) LLM, optionally grounded in a local-only RAG index of your whole mailbox, inserted directly into Thunderbird's own compose window so your signature and Send button just work.",
   "author": "LaboBots workshop",
 
   "browser_specific_settings": {
@@ -20,8 +20,11 @@
 
   "permissions": [
     "messagesRead",
+    "accountsRead",
     "compose",
     "storage",
+    "alarms",
+    "unlimitedStorage",
     "webRequest",
     "webRequestBlocking",
     "http://127.0.0.1/*",
@@ -29,10 +32,16 @@
   ],
 
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["rag.js", "background.js"]
   },
 
   "message_display_action": {
+    "default_title": "LaboBots Mail Agent",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "popup/popup.html"
+  },
+
+  "browser_action": {
     "default_title": "LaboBots Mail Agent",
     "default_icon": "icons/icon.svg",
     "default_popup": "popup/popup.html"

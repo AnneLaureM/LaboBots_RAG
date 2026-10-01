@@ -39,12 +39,39 @@ section {
   margin-bottom: 4px;
 }
 
-input {
+input, select {
   width: 100%;
   font-size: 13px;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
+  font-family: inherit;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-field span { font-weight: 600; font-size: 13px; }
+
+.box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 10px 0;
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
 }
 
 button {
@@ -55,6 +82,8 @@ button {
   background: white;
   cursor: pointer;
 }
+
+button:disabled { opacity: 0.6; cursor: default; }
 
 button.primary {
   background: var(--accent);

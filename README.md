@@ -57,7 +57,7 @@ LaboBots_RAG/
 	├── streamlit_app_secure.py     # per-user auth (OIDC or demo) + per-user LiteLLM key
 	├── create_demo_accounts.py     # one personalized secrets.toml per participant (demo auth)
 	├── manage_litellm.sh           # remote Ollama + LiteLLM proxy + Postgres + participant keys
-	├── manage_remote_rag.sh        # remote Chroma lifecycle + SSH tunnel helper (see note below)
+	├── manage_remote_rag.sh        # remote Chroma lifecycle + SSH netunnel helper (see note below)
 	├── verify_remote_chroma.py     # local-vs-remote Chroma comparison, used by manage_remote_rag.sh verify
 	├── setup_uv.sh                 # one-shot local environment setup
 	└── .streamlit/
