@@ -27,6 +27,18 @@ embeddings = [
     "FlagEmbedding>=1.3",
     "torchvision>=0.29.0",
 ]
+agent = [
+    "python-dotenv==1.1.0",
+    "langchain==1.3.2",
+    "langchain-core==1.4.0",
+    "langchain-openai==1.2.2",
+    "langchain-community==0.4.1",
+    "langgraph==1.2.2",
+    "openai>=2.26",
+    "wikipedia==1.4.0",
+    # vLLM needs a Linux/CUDA host; skip it elsewhere (e.g. macOS).
+    "vllm==0.22.0; sys_platform == 'linux'",
+]
 secure-app = [
     "Authlib>=1.3",
     "streamlit-authenticator>=0.4",
@@ -35,6 +47,10 @@ secure-app = [
 
 [tool.uv]
 default-groups = []
+# vLLM pins its own torch/torchvision, which clashes with the embeddings extra.
+conflicts = [
+    [{ extra = "agent" }, { extra = "embeddings" }],
+]
 
 [tool.uv.sources]
 # Keep all workshop packages on the standard Python package index.
