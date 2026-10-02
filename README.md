@@ -40,9 +40,10 @@ LaboBots_RAG/
 ├── uv.lock
 ├── thunderbird_agent/            # standalone Thunderbird extension -- not a notebook, see 03
 │	├── manifest.json
-│	├── background.js              # the only thing that calls the LLM or Thunderbird's compose API
-│	├── popup/                     # backend choice + steering prompt UI
-│	├── options/                   # local/remote backend config (mirrors secrets.toml)
+│	├── background.js              # calls the LLM and Thunderbird's compose API (reply + new email)
+│	├── rag.js                     # optional local-only RAG over the user's own mailbox (IndexedDB)
+│	├── popup/                     # Reply / New email tabs: backend choice + steering prompt UI
+│	├── options/                   # backend config + mailbox RAG settings (mirrors secrets.toml)
 │	├── icons/
 │	├── build.sh                   # packages the extension as dist/*.xpi (gitignored)
 │	└── README.md                  # install/usage instructions for this extension specifically
@@ -51,7 +52,8 @@ LaboBots_RAG/
 └── rag_workshop/
 	├── corpus/                    # scraped pages + generated indexes; all gitignored except .gitkeep-level structure
 	├── chunk_types.py              # shared Chunk dataclass (see "Why chunk_types.py exists" below)
-	├── rebuild_corpus.py           # full-site crawl -> chunk -> embed -> push to remote Chroma
+	├── rebuild_corpus.py           # full-site crawl -> chunk -> embed (hybrid dense+sparse) -> push to remote Chroma
+	├── dense_rag_pipeline.py       # same pipeline, dense-only BGE-M3 embeddings (see "Dense-only RAG pipeline" below)
 	├── summarize_corpus.py         # standalone, resumable notebook 1 Section 7.6 (LLM summaries)
 	├── streamlit_app.py            # single shared key, simple chat client
 	├── streamlit_app_secure.py     # per-user auth (OIDC or demo) + per-user LiteLLM key
@@ -126,6 +128,35 @@ dropped right before the Chroma push), re-running the script does not redo the c
 BGE-M3 encoding -- it goes straight back to pushing to Chroma. Set `FORCE_RECRAWL` /
 `FORCE_RECHUNK` / `FORCE_REEMBED` at the top of the script to force a stage to redo its work
 regardless of what's cached.
+
+## Dense-only RAG pipeline (alternative to the hybrid one)
+
+`rag_workshop/dense_rag_pipeline.py` is a standalone, simpler sibling of `rebuild_corpus.py`:
+same scrape -> chunk -> embed -> push-to-Chroma pipeline (it imports and reuses
+`rebuild_corpus.py`'s crawl/chunk functions rather than duplicating them), but the embedding step
+only computes BGE-M3's **dense** vectors (`return_sparse=False`) instead of hybrid dense+sparse --
+no Reciprocal Rank Fusion, no `summarize_corpus.py`-style enrichment, just dense retrieval.
+
+It still uses **BGE-M3** rather than a different "pure dense" model: `streamlit_app.py` and
+`streamlit_app_secure.py` hardcode BGE-M3 to encode the user's question at query time, so the
+ingestion side has to keep using the same model, or the stored vectors and the query vector would
+no longer live in the same embedding space (retrieval would silently return wrong results, not
+raise an error). It writes to the **same** cache paths and the **same** remote Chroma collection
+(`ccin2p3_docs`) as `rebuild_corpus.py` -- so running it replaces the current (possibly hybrid)
+index with a dense-only one, exactly as re-running `rebuild_corpus.py` would replace it back. It
+also writes an *empty* `lexical_weights.pkl` (so the Streamlit apps' unconditional `open(...)` on
+that file doesn't crash) and clears `rebuild_corpus.py`'s `embeddings_fingerprint.txt`, so that a
+later `rebuild_corpus.py` run doesn't mistake the empty sparse cache for a valid hybrid one.
+
+```bash
+# with the SSH tunnel open (see "Remote vector store" below):
+uv run python3 rag_workshop/dense_rag_pipeline.py
+```
+
+It ends with a small retrieval benchmark (`EVAL_QUESTIONS`, same Hit@1/Hit@3/latency idea as
+notebook 1 Section 7.6) and an interactive search loop so you can sanity-check retrieval quality
+immediately, without needing an LLM call or either Streamlit app running. Afterward, both
+`streamlit_app.py` and `streamlit_app_secure.py` work unmodified against the dense-only index.
 
 ## Summarization cache (Notebook 1, Section 7.6, bonus)
 
