@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
   ragEmbedModel: "nomic-embed-text",
   ragPullIntervalMinutes: 60,
   ragAccountId: "", // "" = all accounts; set to one account's id to scope indexing/search to it
+  ragFolderIds: [], // [] = every folder of the scoped account(s); otherwise only these folder ids
 };
 
 const MAX_HISTORY = 20;
@@ -470,6 +471,8 @@ async function handleMessage(message) {
     }
     case "ragListAccounts":
       return Rag.listAccounts();
+    case "ragListFolders":
+      return Rag.listFolders(message.accountId);
     case "ragGetStatus":
       return Rag.getStatus();
     case "ragPullNow":
@@ -490,3 +493,33 @@ browser.runtime.onMessage.addListener((message) =>
 );
 
 Rag.init().catch((err) => console.error("LaboBots RAG: init failed", err));
+
+// The toolbar button no longer opens a transient popup (see manifest.json) -- it opens the UI as
+// its own standalone window instead, specifically so generating a draft no longer blocks the
+// rest of Thunderbird: a popup closes (and loses its in-flight work) the moment it loses focus, a
+// separate window doesn't. (Thunderbird has no sidebarAction API -- that's Firefox-only -- so a
+// docked panel isn't an option here.) Clicking the button again just refocuses the existing
+// window rather than opening a second one.
+let agentWindowId = null;
+
+browser.browserAction.onClicked.addListener(async () => {
+  if (agentWindowId !== null) {
+    try {
+      await browser.windows.update(agentWindowId, { focused: true });
+      return;
+    } catch (err) {
+      agentWindowId = null; // the window was closed without us noticing -- fall through and reopen
+    }
+  }
+  const win = await browser.windows.create({
+    url: browser.runtime.getURL("popup/popup.html"),
+    type: "popup",
+    width: 420,
+    height: 680,
+  });
+  agentWindowId = win.id;
+});
+
+browser.windows.onRemoved.addListener((windowId) => {
+  if (windowId === agentWindowId) agentWindowId = null;
+});

@@ -1,9 +1,12 @@
 /*
  * LaboBots Mail Agent -- local mailbox RAG (retrieval-augmented generation).
  *
- * Indexes the user's entire mailbox (every folder, every account) into a local IndexedDB store,
- * so draft generation can pull in relevant context from past emails, not just the one being
- * answered. Deliberately simple for a teaching workshop:
+ * Indexes the user's mailbox into a local IndexedDB store, so draft generation can pull in
+ * relevant context from past emails, not just the one being answered. By default this covers
+ * every folder of every account, but `settings.ragAccountId` / `settings.ragFolderIds` (set from
+ * Options) can narrow it to one account and/or a specific set of folders, so a huge mailbox
+ * doesn't have to be scraped in full just to get useful context. Deliberately simple for a
+ * teaching workshop:
  * - Dedupe by `headerMessageId` (the RFC822 Message-ID, stable across folder moves) -- a message
  *   already indexed is NEVER re-embedded. This also makes an interrupted pull trivially resumable:
  *   it just continues where it left off.
@@ -90,6 +93,7 @@ async function ensureVectorCache(db) {
     chunkId: c.chunkId,
     headerMessageId: c.headerMessageId,
     accountId: c.accountId,
+    folderId: c.folderId,
     embedModel: c.embedModel,
     embedding: c.embedding,
   }));
@@ -103,6 +107,7 @@ function vectorCacheAdd(entries) {
       chunkId: c.chunkId,
       headerMessageId: c.headerMessageId,
       accountId: c.accountId,
+      folderId: c.folderId,
       embedModel: c.embedModel,
       embedding: c.embedding,
     });
@@ -126,6 +131,16 @@ Rag.listAccounts = async function () {
   const accounts = await browser.accounts.list();
   return accounts.map((a) => ({ id: a.id, name: a.name }));
 };
+
+Rag.listFolders = async function (accountId) {
+  if (!accountId) return [];
+  const folders = await browser.folders.query({ accountId });
+  return folders.map((f) => ({ id: f.id, path: f.path || f.name }));
+};
+
+function folderAllowed(settings, folderId) {
+  return !settings.ragFolderIds || settings.ragFolderIds.length === 0 || settings.ragFolderIds.includes(folderId);
+}
 
 Rag.getStatus = async function () {
   const db = await openRagDb();
@@ -300,7 +315,10 @@ Rag.indexMessages = async function (messages) {
 
 async function fullPull(settings) {
   const db = await openRagDb();
-  const folders = await browser.folders.query(settings.ragAccountId ? { accountId: settings.ragAccountId } : {});
+  let folders = await browser.folders.query(settings.ragAccountId ? { accountId: settings.ragAccountId } : {});
+  if (settings.ragFolderIds && settings.ragFolderIds.length > 0) {
+    folders = folders.filter((f) => settings.ragFolderIds.includes(f.id));
+  }
   let consecutiveFailures = 0;
 
   for (const folder of folders) {
@@ -390,7 +408,8 @@ Rag.search = async function (queryText, { topK = RAG_TOP_K, excludeHeaderMessage
       (v) =>
         v.embedModel === settings.ragEmbedModel &&
         v.headerMessageId !== excludeHeaderMessageId &&
-        (!settings.ragAccountId || v.accountId === settings.ragAccountId)
+        (!settings.ragAccountId || v.accountId === settings.ragAccountId) &&
+        folderAllowed(settings, v.folderId)
     );
     if (candidates.length === 0) return [];
 
@@ -465,6 +484,7 @@ async function onNewMail(folder, messageList) {
   const settings = await getSettings();
   if (!settings.ragEnabled) return;
   if (settings.ragAccountId && folder.accountId !== settings.ragAccountId) return;
+  if (!folderAllowed(settings, folder.id)) return;
   const messages = (messageList.messages || []).map((m) => ({ ...m, folder: { id: folder.id, accountId: folder.accountId } }));
   await Rag.indexMessages(messages);
 }

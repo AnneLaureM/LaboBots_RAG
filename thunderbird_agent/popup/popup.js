@@ -1,6 +1,14 @@
 /*
- * LaboBots Mail Agent -- popup script. Pure UI glue: everything that actually talks to the LLM
- * or to Thunderbird's compose API lives in background.js (see the comment at its top for why).
+ * LaboBots Mail Agent -- agent window script. Pure UI glue: everything that actually talks to
+ * the LLM or to Thunderbird's compose API lives in background.js (see the comment at its top for
+ * why). Opened by background.js as its own standalone browser.windows.create() window (Thunderbird
+ * has no sidebarAction API, unlike Firefox) rather than a toolbar popup, specifically so a draft
+ * can take its time generating without blocking the rest of Thunderbird: a popup closes -- losing
+ * its in-flight work -- the moment it loses focus, this separate window doesn't, and the main
+ * Thunderbird window stays fully usable (reading/replying to other mail) while it works.
+ *
+ * Because this is its own window, "the currently displayed email" is never this window's own
+ * active tab -- it has none -- but whatever tab is active in Thunderbird's own main window(s).
  */
 
 const emailSummaryEl = document.getElementById("email-summary");
@@ -32,9 +40,24 @@ const newRegenerateBtn = document.getElementById("new-regenerate-btn");
 const newInsertBtn = document.getElementById("new-insert-btn");
 
 let currentEmail = null;
+let isGenerating = false; // guards against the "which email is this for" tracker below jumping to
+                           // a different email mid-generation -- see refreshCurrentEmail()
 
 function send(action, extra = {}) {
   return browser.runtime.sendMessage({ action, ...extra });
+}
+
+// Finds the active tab in Thunderbird's own main ("normal") window -- never this agent window
+// itself, which is a type:"popup" window with no mail tabs of its own. Prefers whichever main
+// window was focused most recently, in case the user has more than one open.
+async function getMainWindowActiveTab() {
+  const windows = await browser.windows.getAll({ windowTypes: ["normal"] });
+  const sorted = [...windows].sort((a, b) => (b.focused ? 1 : 0) - (a.focused ? 1 : 0));
+  for (const win of sorted) {
+    const [tab] = await browser.tabs.query({ windowId: win.id, active: true });
+    if (tab) return tab;
+  }
+  return null;
 }
 
 function setStatus(text, isError = false) {
@@ -57,6 +80,36 @@ function showTab(tab) {
   newSectionEl.hidden = isReply;
 }
 
+/*
+ * Unlike the old toolbar popup (torn down and rebuilt every time it opened), this window stays
+ * open as the user clicks around Thunderbird's main window -- so instead of reading "the tab this
+ * was opened from" once at startup, it has to track which message is currently displayed there as
+ * that changes. Skipped while a generation is in flight so the reply/insert flow can't end up
+ * pointed at a different email than the one the draft was actually written for.
+ */
+async function refreshCurrentEmail() {
+  if (isGenerating) return;
+
+  const tab = await getMainWindowActiveTab();
+  const emailResp = await send("getDisplayedEmail", { tabId: tab && tab.id });
+  draftAreaEl.hidden = true;
+  setStatus("");
+
+  if (!emailResp.ok) {
+    // No message displayed (e.g. no email selected, or a non-mail tab is focused) -- there is
+    // nothing to reply to right now.
+    currentEmail = null;
+    emailSummaryEl.textContent = emailResp.error;
+    generateBtn.disabled = true;
+    return;
+  }
+  currentEmail = emailResp.data;
+  generateBtn.disabled = false;
+  emailSummaryEl.innerHTML =
+    `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}` +
+    attachmentsSummaryHtml(currentEmail.attachments);
+}
+
 async function init() {
   const settingsResp = await send("getSettings");
   if (settingsResp.ok) {
@@ -64,22 +117,12 @@ async function init() {
     newBackendEl.value = settingsResp.data.backend;
   }
 
-  // The popup knows which tab it was opened from; the background page doesn't.
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  const emailResp = await send("getDisplayedEmail", { tabId: tab && tab.id });
-  if (!emailResp.ok) {
-    // No message displayed (e.g. opened from the permanent toolbar button rather than a message
-    // view) -- there is nothing to reply to, so go straight to "New email" and hide the Reply tab.
-    emailSummaryEl.textContent = emailResp.error;
-    generateBtn.disabled = true;
-    tabReplyEl.disabled = true;
-    showTab("new");
-    return;
-  }
-  currentEmail = emailResp.data;
-  emailSummaryEl.innerHTML =
-    `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}` +
-    attachmentsSummaryHtml(currentEmail.attachments);
+  await refreshCurrentEmail();
+
+  // Keep following the user as they click around other emails/folders in Thunderbird's main
+  // window while this agent window stays open.
+  browser.messageDisplay.onMessageDisplayed.addListener(() => refreshCurrentEmail());
+  browser.tabs.onActivated.addListener(() => refreshCurrentEmail());
 }
 
 function escapeHtml(s) {
@@ -101,10 +144,11 @@ function attachmentsSummaryHtml(attachments) {
 }
 
 async function generate() {
+  isGenerating = true;
   generateBtn.disabled = true;
   regenerateBtn.disabled = true;
   draftAreaEl.hidden = true;
-  setStatus("Generating draft... this can take a while on a local CPU model.");
+  setStatus("Generating draft... this can take a while on a local CPU model -- feel free to read or reply to other emails in the meantime, this panel will keep working.");
 
   const backend = backendEl.value;
   browser.storage.local.set({ backend });
@@ -115,6 +159,7 @@ async function generate() {
     backend,
   });
 
+  isGenerating = false;
   generateBtn.disabled = false;
   regenerateBtn.disabled = false;
 
@@ -147,14 +192,19 @@ async function insertReply() {
     return;
   }
 
-  window.close(); // the reply is now a real compose tab; nothing more for this popup to do
+  // The reply is now a real compose tab -- nothing more to do here. Unlike the old popup, this
+  // panel doesn't close itself: just clear the draft and report success, ready for the next email.
+  draftAreaEl.hidden = true;
+  steeringEl.value = "";
+  setStatus("Inserted into a new reply window.");
 }
 
 async function generateNew() {
+  isGenerating = true;
   newGenerateBtn.disabled = true;
   newRegenerateBtn.disabled = true;
   newDraftAreaEl.hidden = true;
-  setNewStatus("Generating draft... this can take a while on a local CPU model.");
+  setNewStatus("Generating draft... this can take a while on a local CPU model -- feel free to read or reply to other emails in the meantime, this panel will keep working.");
 
   const backend = newBackendEl.value;
   browser.storage.local.set({ backend });
@@ -166,6 +216,7 @@ async function generateNew() {
     backend,
   });
 
+  isGenerating = false;
   newGenerateBtn.disabled = false;
   newRegenerateBtn.disabled = false;
 
@@ -199,7 +250,12 @@ async function insertNewEmail() {
     return;
   }
 
-  window.close(); // the email is now a real compose tab; nothing more for this popup to do
+  // Same as insertReply(): the email is now a real compose tab, and this panel stays open.
+  newDraftAreaEl.hidden = true;
+  newToEl.value = "";
+  newSubjectEl.value = "";
+  newSteeringEl.value = "";
+  setNewStatus("Opened in a new compose window.");
 }
 
 generateBtn.addEventListener("click", generate);

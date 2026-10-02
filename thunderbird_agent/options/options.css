@@ -93,3 +93,21 @@ button.primary {
 }
 
 #save-status { margin: 10px 0; }
+
+#rag-folders-list {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+#rag-folders-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: normal;
+  padding: 2px 0;
+}
+
+#rag-folders-list label input { width: auto; }
+
+#rag-folders-list .muted { padding: 2px 0; }

@@ -50,7 +50,9 @@
     <h2>Mailbox knowledge base (local RAG)</h2>
     <p class="muted">
       Indexes every folder of the selected account (or every account, if left on "All accounts")
-      locally, so drafts can pull in relevant context from past emails. This
+      locally, so drafts can pull in relevant context from past emails -- or, once an account is
+      selected, only the specific folders you check below, so a huge mailbox doesn't have to be
+      scraped in full. This
       <strong>always</strong> runs through local Ollama for embeddings, never through the
       Remote/LiteLLM proxy, regardless of which backend you pick for drafting -- your mailbox never
       leaves this machine for this feature. On Thunderbird versions older than 121, automatic
@@ -58,10 +60,10 @@
       covers every other folder.
     </p>
     <p class="muted">
-      Narrowing to one account immediately stops its context from being used in drafts, even for
-      anything already indexed from other accounts -- but it won't delete that old data from disk.
-      Use <strong>Clear index</strong> below if you want to remove it for good before re-running
-      <strong>Pull now</strong>.
+      Narrowing to one account (or to specific folders within it) immediately stops the excluded
+      content from being used in drafts, even for anything already indexed from it -- but it won't
+      delete that old data from disk. Use <strong>Clear index</strong> below if you want to remove
+      it for good before re-running <strong>Pull now</strong>.
     </p>
     <label class="field checkbox-field">
       <input id="rag-enabled" type="checkbox">
@@ -72,6 +74,10 @@
       <select id="rag-account">
         <option value="">All accounts</option>
       </select>
+    </label>
+    <label class="field" id="rag-folders-field" hidden>
+      <span>Folders to index (leave all unchecked to index every folder of this account)</span>
+      <div id="rag-folders-list" class="box"></div>
     </label>
     <label class="field">
       <span>Embedding model (Ollama)</span>

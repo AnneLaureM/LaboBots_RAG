@@ -17,6 +17,7 @@ async function load() {
   document.getElementById("rag-embed-model").value = resp.data.ragEmbedModel || "nomic-embed-text";
   document.getElementById("rag-pull-interval").value = resp.data.ragPullIntervalMinutes || 60;
   await loadRagAccounts(resp.data.ragAccountId || "");
+  await loadRagFolders(resp.data.ragAccountId || "", resp.data.ragFolderIds || []);
   await refreshRagStatus();
 }
 
@@ -34,6 +35,41 @@ async function loadRagAccounts(selectedId) {
   select.value = selectedId;
 }
 
+// Folder-level scoping only makes sense once a single account is picked (matching the "every
+// folder of the selected account" wording above the account dropdown) -- "All accounts" hides it.
+async function loadRagFolders(accountId, selectedIds) {
+  const fieldEl = document.getElementById("rag-folders-field");
+  const listEl = document.getElementById("rag-folders-list");
+  listEl.innerHTML = "";
+
+  if (!accountId) {
+    fieldEl.hidden = true;
+    return;
+  }
+  fieldEl.hidden = false;
+
+  const foldersResp = await send("ragListFolders", { accountId });
+  if (!foldersResp.ok || foldersResp.data.length === 0) {
+    listEl.innerHTML = `<div class="muted">No folders found for this account.</div>`;
+    return;
+  }
+  for (const folder of foldersResp.data) {
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = folder.id;
+    checkbox.checked = selectedIds.includes(folder.id);
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(folder.path));
+    listEl.appendChild(label);
+  }
+}
+
+function getSelectedFolderIds() {
+  const listEl = document.getElementById("rag-folders-list");
+  return Array.from(listEl.querySelectorAll("input[type=checkbox]:checked")).map((cb) => cb.value);
+}
+
 async function save() {
   const settings = {};
   for (const key of fields) {
@@ -41,6 +77,7 @@ async function save() {
   }
   settings.ragEnabled = document.getElementById("rag-enabled").checked;
   settings.ragAccountId = document.getElementById("rag-account").value;
+  settings.ragFolderIds = settings.ragAccountId ? getSelectedFolderIds() : [];
   settings.ragEmbedModel = document.getElementById("rag-embed-model").value.trim() || "nomic-embed-text";
   settings.ragPullIntervalMinutes = parseInt(document.getElementById("rag-pull-interval").value, 10) || 60;
   await send("saveSettings", { settings });
@@ -110,6 +147,10 @@ async function clearIndex() {
   await send("ragClearIndex");
   await refreshRagStatus();
 }
+
+document.getElementById("rag-account").addEventListener("change", (e) => {
+  loadRagFolders(e.target.value, []);
+});
 
 document.getElementById("save").addEventListener("click", save);
 document.getElementById("clear-history").addEventListener("click", clearHistory);
