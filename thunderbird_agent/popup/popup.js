@@ -90,24 +90,30 @@ function showTab(tab) {
 async function refreshCurrentEmail() {
   if (isGenerating) return;
 
-  const tab = await getMainWindowActiveTab();
-  const emailResp = await send("getDisplayedEmail", { tabId: tab && tab.id });
-  draftAreaEl.hidden = true;
-  setStatus("");
+  try {
+    const tab = await getMainWindowActiveTab();
+    const emailResp = await send("getDisplayedEmail", { tabId: tab && tab.id });
+    draftAreaEl.hidden = true;
+    setStatus("");
 
-  if (!emailResp.ok) {
-    // No message displayed (e.g. no email selected, or a non-mail tab is focused) -- there is
-    // nothing to reply to right now.
+    if (!emailResp.ok) {
+      // No message displayed (e.g. no email selected, or a non-mail tab is focused) -- there is
+      // nothing to reply to right now.
+      currentEmail = null;
+      emailSummaryEl.textContent = emailResp.error;
+      generateBtn.disabled = true;
+      return;
+    }
+    currentEmail = emailResp.data;
+    generateBtn.disabled = false;
+    emailSummaryEl.innerHTML =
+      `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}` +
+      attachmentsSummaryHtml(currentEmail.attachments);
+  } catch (err) {
     currentEmail = null;
-    emailSummaryEl.textContent = emailResp.error;
+    emailSummaryEl.textContent = `Unexpected error: ${err.message || err}`;
     generateBtn.disabled = true;
-    return;
   }
-  currentEmail = emailResp.data;
-  generateBtn.disabled = false;
-  emailSummaryEl.innerHTML =
-    `<strong>${escapeHtml(currentEmail.subject)}</strong><br>from ${escapeHtml(currentEmail.from)}` +
-    attachmentsSummaryHtml(currentEmail.attachments);
 }
 
 async function init() {
@@ -153,50 +159,60 @@ async function generate() {
   const backend = backendEl.value;
   browser.storage.local.set({ backend });
 
-  const resp = await send("generateDraft", {
-    email: currentEmail,
-    steeringPrompt: steeringEl.value.trim(),
-    backend,
-  });
+  try {
+    const resp = await send("generateDraft", {
+      email: currentEmail,
+      steeringPrompt: steeringEl.value.trim(),
+      backend,
+    });
 
-  isGenerating = false;
-  generateBtn.disabled = false;
-  regenerateBtn.disabled = false;
+    if (!resp.ok) {
+      setStatus(resp.error, true);
+      return;
+    }
 
-  if (!resp.ok) {
-    setStatus(resp.error, true);
-    return;
+    setStatus("");
+    draftTextEl.value = resp.data.draft;
+    draftAreaEl.hidden = false;
+  } catch (err) {
+    // sendMessage itself rejected (e.g. the background page hadn't finished starting up) --
+    // without this, the status would be stuck on "Generating..." forever with no way to tell why.
+    setStatus(`Unexpected error: ${err.message || err}`, true);
+  } finally {
+    isGenerating = false;
+    generateBtn.disabled = false;
+    regenerateBtn.disabled = false;
   }
-
-  setStatus("");
-  draftTextEl.value = resp.data.draft;
-  draftAreaEl.hidden = false;
 }
 
 async function insertReply() {
   insertBtn.disabled = true;
   setStatus("Opening the reply window...");
 
-  const resp = await send("acceptDraft", {
-    messageId: currentEmail.messageId,
-    draftText: draftTextEl.value,
-    subject: currentEmail.subject,
-    steeringPrompt: steeringEl.value.trim(),
-    draft: draftTextEl.value,
-  });
+  try {
+    const resp = await send("acceptDraft", {
+      messageId: currentEmail.messageId,
+      draftText: draftTextEl.value,
+      subject: currentEmail.subject,
+      steeringPrompt: steeringEl.value.trim(),
+      draft: draftTextEl.value,
+    });
 
-  insertBtn.disabled = false;
+    if (!resp.ok) {
+      setStatus(resp.error, true);
+      return;
+    }
 
-  if (!resp.ok) {
-    setStatus(resp.error, true);
-    return;
+    // The reply is now a real compose tab -- nothing more to do here. Unlike the old popup, this
+    // window doesn't close itself: just clear the draft and report success, ready for the next email.
+    draftAreaEl.hidden = true;
+    steeringEl.value = "";
+    setStatus("Inserted into a new reply window.");
+  } catch (err) {
+    setStatus(`Unexpected error: ${err.message || err}`, true);
+  } finally {
+    insertBtn.disabled = false;
   }
-
-  // The reply is now a real compose tab -- nothing more to do here. Unlike the old popup, this
-  // panel doesn't close itself: just clear the draft and report success, ready for the next email.
-  draftAreaEl.hidden = true;
-  steeringEl.value = "";
-  setStatus("Inserted into a new reply window.");
 }
 
 async function generateNew() {
@@ -209,53 +225,61 @@ async function generateNew() {
   const backend = newBackendEl.value;
   browser.storage.local.set({ backend });
 
-  const resp = await send("generateNewEmail", {
-    to: newToEl.value.trim(),
-    subject: newSubjectEl.value.trim(),
-    steeringPrompt: newSteeringEl.value.trim(),
-    backend,
-  });
+  try {
+    const resp = await send("generateNewEmail", {
+      to: newToEl.value.trim(),
+      subject: newSubjectEl.value.trim(),
+      steeringPrompt: newSteeringEl.value.trim(),
+      backend,
+    });
 
-  isGenerating = false;
-  newGenerateBtn.disabled = false;
-  newRegenerateBtn.disabled = false;
+    if (!resp.ok) {
+      setNewStatus(resp.error, true);
+      return;
+    }
 
-  if (!resp.ok) {
-    setNewStatus(resp.error, true);
-    return;
+    setNewStatus("");
+    newDraftSubjectEl.value = resp.data.subject;
+    newDraftTextEl.value = resp.data.draft;
+    newDraftAreaEl.hidden = false;
+  } catch (err) {
+    setNewStatus(`Unexpected error: ${err.message || err}`, true);
+  } finally {
+    isGenerating = false;
+    newGenerateBtn.disabled = false;
+    newRegenerateBtn.disabled = false;
   }
-
-  setNewStatus("");
-  newDraftSubjectEl.value = resp.data.subject;
-  newDraftTextEl.value = resp.data.draft;
-  newDraftAreaEl.hidden = false;
 }
 
 async function insertNewEmail() {
   newInsertBtn.disabled = true;
   setNewStatus("Opening the compose window...");
 
-  const resp = await send("acceptNewEmail", {
-    to: newToEl.value.trim(),
-    subject: newDraftSubjectEl.value.trim(),
-    draftText: newDraftTextEl.value,
-    steeringPrompt: newSteeringEl.value.trim(),
-    draft: newDraftTextEl.value,
-  });
+  try {
+    const resp = await send("acceptNewEmail", {
+      to: newToEl.value.trim(),
+      subject: newDraftSubjectEl.value.trim(),
+      draftText: newDraftTextEl.value,
+      steeringPrompt: newSteeringEl.value.trim(),
+      draft: newDraftTextEl.value,
+    });
 
-  newInsertBtn.disabled = false;
+    if (!resp.ok) {
+      setNewStatus(resp.error, true);
+      return;
+    }
 
-  if (!resp.ok) {
-    setNewStatus(resp.error, true);
-    return;
+    // Same as insertReply(): the email is now a real compose tab, and this window stays open.
+    newDraftAreaEl.hidden = true;
+    newToEl.value = "";
+    newSubjectEl.value = "";
+    newSteeringEl.value = "";
+    setNewStatus("Opened in a new compose window.");
+  } catch (err) {
+    setNewStatus(`Unexpected error: ${err.message || err}`, true);
+  } finally {
+    newInsertBtn.disabled = false;
   }
-
-  // Same as insertReply(): the email is now a real compose tab, and this panel stays open.
-  newDraftAreaEl.hidden = true;
-  newToEl.value = "";
-  newSubjectEl.value = "";
-  newSteeringEl.value = "";
-  setNewStatus("Opened in a new compose window.");
 }
 
 generateBtn.addEventListener("click", generate);

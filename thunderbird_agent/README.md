@@ -134,6 +134,19 @@ folders) takes effect on search immediately, even for data already indexed outsi
   **Clear index** wipes it to start over.
 - Retrieval silently returns nothing if the match quality is too low -- it never forces irrelevant
   mailbox content into a draft.
+- **Thread-aware**: each indexed message also records which conversation it belongs to (from the
+  `References`/`In-Reply-To` headers). A chunk from the same thread as the email you're replying
+  to is preferred over a merely similar-topic one from somewhere else in your mailbox.
+- **Your own writing as a style reference**: alongside the factual mailbox context above, a
+  second, separate retrieval pulls only emails *you* sent (matched against your account's
+  configured identities, by address or by display name -- so a message routed through a mailing
+  list under the list's address, but still signed with your name, still counts) and offers them to
+  the model purely as a style example ("write like I usually do"), never as factual content to
+  copy from. Which account/folder this is scoped to follows the same **Account to index** /
+  **Folders to index** settings as everything else above.
+- Any of this metadata (thread, own-authorship) is only computed when a message is first indexed
+  -- messages indexed before this feature existed won't have it until you **Clear index** +
+  **Pull now** to re-index them.
 
 ## Known limitations (see the notebook for the "why")
 

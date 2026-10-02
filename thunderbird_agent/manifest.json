@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "LaboBots Mail Agent",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Draft email replies -- or brand-new emails -- with a local (Ollama) or remote (LiteLLM proxy) LLM, optionally grounded in a local-only RAG index of your whole mailbox, inserted directly into Thunderbird's own compose window so your signature and Send button just work.",
   "author": "LaboBots workshop",
 

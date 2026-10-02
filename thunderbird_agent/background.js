@@ -88,6 +88,32 @@ function htmlToPlainText(html) {
   return doc.body ? doc.body.textContent.trim() : html;
 }
 
+/**
+ * Pulls every Message-ID this message is threaded with (its own id, plus everything in its
+ * References/In-Reply-To headers), so rag.js can later tell whether two messages belong to the
+ * same conversation -- a much stronger relevance signal than topical similarity alone. Those two
+ * headers aren't exposed on the MessageHeader object the rest of this file works with, so this
+ * reads them from the raw MIME headers via getFull() instead.
+ */
+function extractHeaderIds(values) {
+  if (!values) return [];
+  const joined = Array.isArray(values) ? values.join(" ") : String(values);
+  return (joined.match(/<[^>]+>/g) || []).map((m) => m.slice(1, -1));
+}
+
+async function getThreadIds(messageId, headerMessageId) {
+  try {
+    const full = await browser.messages.getFull(messageId);
+    const headers = full.headers || {};
+    const refs = extractHeaderIds(headers["references"]);
+    const inReplyTo = extractHeaderIds(headers["in-reply-to"]);
+    return Array.from(new Set([headerMessageId, ...refs, ...inReplyTo].filter(Boolean)));
+  } catch (err) {
+    console.error("LaboBots: could not read thread headers for message", messageId, err);
+    return [headerMessageId].filter(Boolean);
+  }
+}
+
 async function getMessageBody(messageId) {
   // Thunderbird 128+ has a dedicated API that already decodes the inline text parts; older
   // versions fall back to walking the MIME tree ourselves.
@@ -222,6 +248,7 @@ async function getDisplayedEmail(tabId) {
   }
   const body = await getMessageBody(message.id);
   const attachments = await getAttachmentsWithText(message.id);
+  const threadIds = await getThreadIds(message.id, message.headerMessageId);
   return {
     messageId: message.id,
     headerMessageId: message.headerMessageId,
@@ -229,6 +256,7 @@ async function getDisplayedEmail(tabId) {
     from: message.author,
     body: body.slice(0, 6000), // keep the prompt a reasonable size for a small local model
     attachments,
+    threadIds,
   };
 }
 
@@ -295,16 +323,28 @@ async function generateDraft({ email, steeringPrompt, backend }) {
   const historyContext = buildHistoryContext(settings.history);
   const attachmentsContext = buildAttachmentsContext(email.attachments);
   const ragChunks = settings.ragEnabled
-    ? await Rag.search(email.body, { excludeHeaderMessageId: email.headerMessageId })
+    ? await Rag.search(email.body, { excludeHeaderMessageId: email.headerMessageId, currentThreadIds: email.threadIds })
+    : [];
+  // Same search, but restricted to the user's own past emails -- a style reference (how *I*
+  // write), kept separate from ragContext's factual mailbox content (how the topic was discussed,
+  // by anyone). Same-thread chunks (currentThreadIds) are preferred in both via the thread boost.
+  const ownStyleChunks = settings.ragEnabled
+    ? await Rag.search(email.body, {
+        excludeHeaderMessageId: email.headerMessageId,
+        currentThreadIds: email.threadIds,
+        requireIsFromMe: true,
+        topK: 3,
+      })
     : [];
   const ragContext = Rag.buildContextBlock(ragChunks);
+  const ownStyleContext = Rag.buildStyleContextBlock(ownStyleChunks);
 
   const userPrompt = `Original email
 From: ${email.from}
 Subject: ${email.subject}
 
 ${email.body}
-${attachmentsContext}${ragContext}
+${attachmentsContext}${ragContext}${ownStyleContext}
 ---
 ${steeringPrompt ? `Steering instructions from the user: ${steeringPrompt}` : "No specific steering instructions -- use your best judgment for a reasonable reply."}${historyContext}
 
@@ -330,14 +370,17 @@ Draft the reply now.`;
 async function generateNewEmail({ to, subject, steeringPrompt, backend }) {
   const settings = await getSettings();
   const historyContext = buildHistoryContext(settings.newEmailHistory || [], "email");
-  const ragChunks = settings.ragEnabled ? await Rag.search(steeringPrompt || subject) : [];
+  const query = steeringPrompt || subject;
+  const ragChunks = settings.ragEnabled ? await Rag.search(query) : [];
+  const ownStyleChunks = settings.ragEnabled ? await Rag.search(query, { requireIsFromMe: true, topK: 3 }) : [];
   const ragContext = Rag.buildContextBlock(ragChunks);
+  const ownStyleContext = Rag.buildStyleContextBlock(ownStyleChunks);
 
   const userPrompt = `New email to compose (not a reply)
 ${to ? `To: ${to}` : "Recipient: not specified -- write generically."}
 ${subject ? `Subject: ${subject}` : "No subject given -- suggest one, see the Subject: line rule."}
 ---
-${steeringPrompt ? `Instructions from the user: ${steeringPrompt}` : "No specific instructions were given -- write a short, polite placeholder email and make clear in the text that it still needs details from the user."}${ragContext}${historyContext}
+${steeringPrompt ? `Instructions from the user: ${steeringPrompt}` : "No specific instructions were given -- write a short, polite placeholder email and make clear in the text that it still needs details from the user."}${ragContext}${ownStyleContext}${historyContext}
 
 Write the email now.`;
 
