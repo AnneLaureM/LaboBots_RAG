@@ -32,7 +32,10 @@
         <textarea id="steering" rows="3" placeholder="e.g. politely decline, ask for the SLURM job ID, keep it to two sentences..."></textarea>
       </label>
 
-      <button id="generate-btn" class="primary">Generate draft</button>
+      <div class="generate-row">
+        <button id="generate-btn" class="primary">Generate draft</button>
+        <button id="stop-btn" hidden>Stop</button>
+      </div>
     </div>
 
     <div id="status" class="muted" hidden></div>
@@ -79,7 +82,10 @@
         <textarea id="new-steering" rows="4" placeholder="e.g. ask the registrar for a one-week extension on the workshop sign-up, friendly but to the point..."></textarea>
       </label>
 
-      <button id="new-generate-btn" class="primary">Generate draft</button>
+      <div class="generate-row">
+        <button id="new-generate-btn" class="primary">Generate draft</button>
+        <button id="new-stop-btn" hidden>Stop</button>
+      </div>
     </div>
 
     <div id="new-status" class="muted" hidden></div>
