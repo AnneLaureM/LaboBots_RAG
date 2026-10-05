@@ -117,7 +117,21 @@ button.primary {
 button.primary:hover { background: #0b7c72; }
 button:disabled { opacity: 0.6; cursor: default; }
 
-#generate-btn { width: 100%; }
+.generate-row {
+  display: flex;
+  gap: 8px;
+}
+
+.generate-row .primary { flex: 1; }
+
+#stop-btn, #new-stop-btn {
+  white-space: nowrap;
+  border-color: #B91C1C;
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+#stop-btn:hover, #new-stop-btn:hover { background: #FEE2E2; }
 
 .actions {
   display: flex;

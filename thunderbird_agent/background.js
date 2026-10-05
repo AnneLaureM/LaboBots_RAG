@@ -281,11 +281,14 @@ async function fetchOrExplain(baseUrl, hint, url, init) {
   }
 }
 
-async function callOllama(settings, messages) {
+// `signal` (optional, default undefined) lets the streaming-path fallback abort an in-flight
+// non-streaming call; the one-shot handleMessage path passes nothing and behaves exactly as before.
+async function callOllama(settings, messages, signal) {
   const resp = await fetchOrExplain(settings.ollama_url, "Cannot reach Ollama -- is 'ollama serve' running?", `${settings.ollama_url}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: settings.ollama_model, messages, stream: false }),
+    signal,
   });
   if (resp.status === 403) {
     throw new Error("Ollama refused the request (HTTP 403, origin check). Restart Ollama with OLLAMA_ORIGINS=moz-extension://* -- see the extension README.");
@@ -298,7 +301,7 @@ async function callOllama(settings, messages) {
   return data.message.content;
 }
 
-async function callLiteLLM(settings, messages) {
+async function callLiteLLM(settings, messages, signal) {
   if (!settings.litellm_key) {
     throw new Error("No LiteLLM key configured -- set it in this extension's Options page.");
   }
@@ -309,6 +312,7 @@ async function callLiteLLM(settings, messages) {
       Authorization: `Bearer ${settings.litellm_key}`,
     },
     body: JSON.stringify({ model: settings.litellm_model, messages }),
+    signal,
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
@@ -318,7 +322,143 @@ async function callLiteLLM(settings, messages) {
   return data.choices[0].message.content;
 }
 
-async function generateDraft({ email, steeringPrompt, backend }) {
+/*
+ * Streaming variants of the two calls above (same endpoints, same guardrails, stream:true): the
+ * answer arrives as a byte stream which is decoded (TextDecoder with stream:true, so a UTF-8
+ * multi-octet character cut by a chunk boundary still reassembles) and split into complete
+ * lines by StreamLineBuffer before any line is parsed. onToken(token) is invoked for every
+ * non-empty token; the complete draft is returned so the caller can post-process it (Subject:
+ * extraction...). Errors thrown are the same family as the non-streaming versions plus
+ * AbortError when the caller's signal fires -- runStreamed decides what each means.
+ */
+
+/**
+ * The decode -> line-split -> parse loop, shared by streamOllama and streamLiteLLM (it used to
+ * be duplicated verbatim in both). `parse` is an object:
+ *   parse.parseLine(line) -> { token?, dataLine? }   (may throw: that aborts the whole stream)
+ *   parse.flush()        -> same shape, called ONCE at end-of-stream, only if defined --
+ *                            parsers with per-event state (SSEParser) reassemble whatever the
+ *                            server left without a closing marker; stateless ones omit it.
+ * `noBodyMessage` is the backend-specific wording for the "no readable body" error, which stays
+ * per-backend because the two backends have different likely causes.
+ * Returns { full, raw, dataLinesSeen }:
+ *   full          -- the concatenated non-empty tokens (the draft);
+ *   raw           -- the whole decoded body, kept only so a caller can quote a slice of it in
+ *                    an error message (assertSseStreamSawData);
+ *   dataLinesSeen -- lines parseLine flagged dataLine:true (SSE only; always 0 for Ollama).
+ */
+async function consumeStream(resp, parse, onToken, noBodyMessage) {
+  if (!resp.body) {
+    throw new Error(noBodyMessage);
+  }
+  const decoder = new TextDecoder();
+  const buffer = new StreamLineBuffer();
+  let full = "";
+  let raw = "";
+  let dataLinesSeen = 0;
+  const emit = (r) => {
+    if (r.dataLine) dataLinesSeen += 1;
+    if (r.token) {
+      full += r.token;
+      onToken(r.token);
+    }
+  };
+  const handleLines = (lines) => {
+    for (const line of lines) emit(parse.parseLine(line));
+  };
+  const reader = resp.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // { stream:true } is what tells the decoder to hold back a cut multi-octet character until
+      // its continuation bytes arrive with the next chunk.
+      const text = decoder.decode(value, { stream: true });
+      raw += text;
+      handleLines(buffer.feed(text));
+    }
+    // End of stream: parse whatever partial line the server left without a final newline -- some
+    // backends close cleanly instead of sending their own done/[DONE] marker, and that text is
+    // real text either way. (If the last line is invalid it throws here -- that is the point of
+    // doing it: an unparseable tail is an error, not a silent loss.)
+    handleLines([buffer.flush()]);
+    // Parsers with per-event state reassemble a trailing event that never received its closing
+    // marker; stateless ones (Ollama) have no flush and nothing more to emit.
+    if (typeof parse.flush === "function") {
+      emit(parse.flush());
+    }
+  } finally {
+    // Release the reader's lock even when we bail out mid-stream (abort, parse error): without
+    // this the response body can linger until GC in some engine builds.
+    try { reader.releaseLock(); } catch (err) { /* already released */ }
+  }
+  return { full, raw, dataLinesSeen };
+}
+
+async function streamOllama(settings, messages, onToken, signal) {
+  const resp = await fetchOrExplain(settings.ollama_url, "Cannot reach Ollama -- is 'ollama serve' running?", `${settings.ollama_url}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: settings.ollama_model, messages, stream: true }),
+    signal,
+  });
+  if (resp.status === 403) {
+    throw new Error("Ollama refused the request (HTTP 403, origin check). Restart Ollama with OLLAMA_ORIGINS=moz-extension://* -- see the extension README.");
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Ollama returned HTTP ${resp.status}. ${text} -- is 'ollama serve' running and the model '${settings.ollama_model}' pulled?`);
+  }
+  const { full } = await consumeStream(
+    resp,
+    { parseLine: parseOllamaLine },
+    onToken,
+    "Ollama returned no readable body for the stream -- this browser build may not support streaming responses."
+  );
+  return full;
+}
+
+async function streamLiteLLM(settings, messages, onToken, signal) {
+  if (!settings.litellm_key) {
+    throw new Error("No LiteLLM key configured -- set it in this extension's Options page.");
+  }
+  const resp = await fetchOrExplain(settings.litellm_url, "Cannot reach the LiteLLM proxy -- is the SSH tunnel open (manage_remote_rag.sh tunnel)?", `${settings.litellm_url}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${settings.litellm_key}`,
+    },
+    body: JSON.stringify({ model: settings.litellm_model, messages, stream: true }),
+    signal,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`LiteLLM proxy returned HTTP ${resp.status}. ${text} -- is the SSH tunnel to the remote host open (manage_remote_rag.sh tunnel)?`);
+  }
+  // ONE parser instance per stream (see SSEParser's doc): it must own the accumulation state of
+  // every line of THIS stream, not share it across concurrent generations.
+  const sse = new SSEParser();
+  const { full, raw, dataLinesSeen } = await consumeStream(
+    resp,
+    { parseLine: (line) => sse.parseLine(line), flush: () => sse.flush() },
+    onToken,
+    "The LiteLLM proxy returned no readable body for the stream -- this browser build may not support streaming responses."
+  );
+  // A 200 body with not a single "data:" line is not an SSE stream (an HTML error page from a
+  // broken tunnel, or a one-shot JSON answer from a proxy that ignored stream:true): raising
+  // here -- before any token is out, so runStreamed falls back to the non-streaming call --
+  // beats resolving with an empty "draft" that Insert would have accepted.
+  assertSseStreamSawData(dataLinesSeen, raw);
+  return full;
+}
+
+/**
+ * Builds the exact prompt (system + user message) for a reply to `email` -- RAG context,
+ * attachments, style history, all of it. Split out of generateDraft() so the streaming path
+ * (runStreamed) reuses the SAME prompt-building code instead of duplicating this block: one
+ * source of truth for what the model sees, whether or not the answer streams.
+ */
+async function buildDraftMessages(email, steeringPrompt) {
   const settings = await getSettings();
   const historyContext = buildHistoryContext(settings.history);
   const attachmentsContext = buildAttachmentsContext(email.attachments);
@@ -350,24 +490,27 @@ ${steeringPrompt ? `Steering instructions from the user: ${steeringPrompt}` : "N
 
 Draft the reply now.`;
 
-  const messages = [
+  return [
     { role: "system", content: DRAFT_SYSTEM_PROMPT },
     { role: "user", content: userPrompt },
   ];
+}
 
+async function generateDraft({ email, steeringPrompt, backend, signal }) {
+  const settings = await getSettings();
+  const messages = await buildDraftMessages(email, steeringPrompt);
   const draft = backend === "remote"
-    ? await callLiteLLM(settings, messages)
-    : await callOllama(settings, messages);
+    ? await callLiteLLM(settings, messages, signal)
+    : await callOllama(settings, messages, signal);
 
   return draft.trim();
 }
 
 /**
- * Composes a brand-new email (no originating message), from the user's instructions alone.
- * Returns { draft, subject }: if the caller left `subject` blank, a leading "Subject: ..." line
- * the model was asked to produce is split off and returned separately, never left in the body.
+ * Builds the exact prompt (system + user message) for a brand-new email -- same split-out of
+ * prompt building as buildDraftMessages, for the same reason (shared by the streaming path).
  */
-async function generateNewEmail({ to, subject, steeringPrompt, backend }) {
+async function buildNewEmailMessages(to, subject, steeringPrompt) {
   const settings = await getSettings();
   const historyContext = buildHistoryContext(settings.newEmailHistory || [], "email");
   const query = steeringPrompt || subject;
@@ -384,20 +527,166 @@ ${steeringPrompt ? `Instructions from the user: ${steeringPrompt}` : "No specifi
 
 Write the email now.`;
 
-  const messages = [
+  return [
     { role: "system", content: NEW_EMAIL_SYSTEM_PROMPT },
     { role: "user", content: userPrompt },
   ];
+}
 
-  const raw = (backend === "remote" ? await callLiteLLM(settings, messages) : await callOllama(settings, messages)).trim();
-
-  if (!subject) {
-    const match = raw.match(/^Subject:\s*(.+?)\s*\n+([\s\S]*)$/i);
+/**
+ * Splits a leading "Subject: ..." line off model output, but only when the caller left the
+ * subject blank: a subject the user typed is authoritative, and the model was instructed not to
+ * add its own in that case anyway. Shared by the non-streaming generateNewEmail and the
+ * streaming runStreamed so both paths agree exactly.
+ */
+function splitSubject(fullText, userSubject) {
+  const text = fullText.trim();
+  if (!userSubject) {
+    // Match on the TRIMMED text: a model that pads its output with a leading newline would
+    // otherwise escape the anchored "Subject:" match.
+    const match = text.match(/^Subject:\s*(.+?)\s*\n+([\s\S]*)$/i);
     if (match) {
       return { draft: match[2].trim(), subject: match[1].trim() };
     }
   }
-  return { draft: raw, subject: subject || "" };
+  return { draft: text, subject: userSubject || "" };
+}
+
+/**
+ * Composes a brand-new email (no originating message), from the user's instructions alone.
+ * Returns { draft, subject }: if the caller left `subject` blank, a leading "Subject: ..." line
+ * the model was asked to produce is split off and returned separately, never left in the body.
+ */
+async function generateNewEmail({ to, subject, steeringPrompt, backend, signal }) {
+  const settings = await getSettings();
+  const messages = await buildNewEmailMessages(to, subject, steeringPrompt);
+  const raw = backend === "remote"
+    ? await callLiteLLM(settings, messages, signal)
+    : await callOllama(settings, messages, signal);
+
+  return splitSubject(raw, subject);
+}
+
+/*
+ * Streaming entry point, used by the UI over a long-lived runtime port (browser.runtime.connect
+ * with name "mail-agent-stream") instead of the one-shot runtime.sendMessage the non-streaming
+ * path uses -- a port stays open across as many round-trips as the draft needs.
+ *
+ * Protocol (one message in, many out):
+ *   in : { type:"start", action:"generateDraft"|"generateNewEmail", ...payload, backend }
+ *   in : { type:"stop" } at any time -- aborts the in-flight request
+ *   out: { type:"token", text } -- repeated, one per non-empty model token
+ *        then exactly one of:
+ *        { type:"retrying" } -- a pre-first-token failure, falling back to the non-streaming call
+ *        { type:"done", draft[, subject] } -- subject present for "generateNewEmail"
+ *        { type:"error", error }
+ * A voluntary stop (Stop button or the agent window closing) sends NOTHING after it: the user
+ * asked to be left alone, so silence is the answer, and no fallback is attempted either.
+ *
+ * Every send goes through safePost because the port can be disconnected at the very moment an
+ * abort lands (or right after we send) -- port.postMessage then throws, and that must never
+ * mask the real outcome of the request.
+ */
+async function runStreamed(port, action, payload) {
+  const ac = new AbortController();
+  let tokensEmitted = 0;
+  let disconnected = false;
+  let stopped = false;
+
+  const safePost = (msg) => {
+    try {
+      port.postMessage(msg);
+    } catch (err) {
+      // The UI is gone (window closed / port disconnected) -- there is nobody left to tell.
+    }
+  };
+
+  // Closing the agent window (onDisconnect) and the UI sending { type:"stop" } both mean "stop
+  // now": aborting makes reader.read() inside streamOllama/streamLiteLLM reject with AbortError,
+  // which nextStepOnError maps to "abort" -- a silent return, no fallback, no scary error.
+  // `disconnected` is remembered separately because, after the abort is already over, the
+  // fallback path must also skip the non-streaming retry: nobody is watching it, and on a local
+  // CPU model it would still burn several minutes of compute for no one.
+  port.onDisconnect.addListener(() => {
+    disconnected = true;
+    ac.abort();
+  });
+  port.onMessage.addListener((msg) => {
+    if (msg && msg.type === "stop") {
+      // Remembered as well: the non-streaming fallback (below) is abortable through the same
+      // signal, but a stop that lands in the gap between "decide to fall back" and "the fetch
+      // actually starts" is still possible -- and the post-checks below drop the result either
+      // way, so no draft the user just asked to stop can ever be shown.
+      stopped = true;
+      ac.abort();
+    }
+  });
+
+  const onToken = (text) => {
+    tokensEmitted += 1;
+    safePost({ type: "token", text });
+  };
+
+  try {
+    // Building the prompt (RAG search included) can itself fail -- that is still a
+    // pre-first-token failure, i.e. the same "fallback" case as a request that never produced
+    // a single token.
+    const settings = await getSettings();
+    const messages = action === "generateNewEmail"
+      ? await buildNewEmailMessages(payload.to, payload.subject, payload.steeringPrompt)
+      : await buildDraftMessages(payload.email, payload.steeringPrompt);
+    const full = payload.backend === "remote"
+      ? await streamLiteLLM(settings, messages, onToken, ac.signal)
+      : await streamOllama(settings, messages, onToken, ac.signal);
+
+    // Same post-processing as the non-streaming path (generateDraft trims; generateNewEmail
+    // additionally splits off a leading "Subject: ..." line when the user left one blank) --
+    // through the SAME splitSubject() both paths now share, so they cannot drift apart.
+    if (action === "generateNewEmail") {
+      const { draft, subject } = splitSubject(full, payload.subject);
+      safePost({ type: "done", draft, subject });
+    } else {
+      safePost({ type: "done", draft: full.trim() });
+    }
+  } catch (err) {
+    switch (nextStepOnError(err, tokensEmitted)) {
+      case "abort":
+        // Deliberate stop -- nothing to say and, above all, nothing to re-run.
+        return;
+      case "fallback": {
+        // Nothing is on screen yet, so the non-streaming retry is invisible except a status
+        // line -- unless the user already left (Stop button or the window closing): in that
+        // case launching a full LLM call nobody will ever read would be a pure waste of local
+        // CPU, so skip it before it even starts.
+        if (stopped || disconnected) return;
+        safePost({ type: "retrying" });
+        // The fallback is now abortable through the same signal: a Stop that lands WHILE it
+        // runs aborts the fetch itself (AbortError) instead of finishing an unwanted call.
+        const fallbackCall = action === "generateNewEmail"
+          ? () => generateNewEmail({ ...payload, signal: ac.signal })
+          : () => generateDraft({ ...payload, signal: ac.signal });
+        try {
+          const result = await fallbackCall();
+          if (stopped || disconnected) return; // the user stopped mid-fallback: drop the result
+          safePost(action === "generateNewEmail" ? { type: "done", ...result } : { type: "done", draft: result });
+        } catch (fallbackErr) {
+          // An AbortError here means a stop/disconnect landed while the fallback ran: that is a
+          // deliberate stop, not a failure -- silence remains the answer.
+          if (stopped || disconnected || (fallbackErr && fallbackErr.name === "AbortError")) return;
+          // Both paths failed: say so with BOTH reasons, so the user can act on the real one.
+          safePost({
+            type: "error",
+            error: `Streaming unavailable (${err.message || err}) -- and the non-streaming fallback failed too: ${fallbackErr.message || fallbackErr}`,
+          });
+        }
+        return;
+      }
+      default:
+        // Tokens are already on screen -- a re-run would duplicate the partial text, so keep it
+        // and simply report why the stream stopped.
+        safePost({ type: "error", error: err.message || String(err) });
+    }
+  }
 }
 
 async function recordHistory({ subject, steeringPrompt, draft }) {
@@ -534,6 +823,66 @@ browser.runtime.onMessage.addListener((message) =>
     (err) => ({ ok: false, error: err.message || String(err) })
   )
 );
+
+/*
+ * Streaming path (see runStreamed for the protocol). The UI connects with
+ * browser.runtime.connect("mail-agent-stream") and must send its { type:"start", ... } message
+ * first; we wait for exactly that before starting the work, so prompt-building errors (RAG
+ * search failing) are handled inside runStreamed's error logic instead of here. Anything else
+ * first -- or a port that never sends anything -- is a protocol error, and closing the port is
+ * the only sane reaction to it. This is the extension's only onConnect listener.
+ *
+ * At most ONE generation runs at a time, enforced HERE (background-side) and not just in the
+ * popup: the popup's own isGenerating guard only covers its own window, but a second agent
+ * window (an orphaned one from a crashed session, plus the toolbar one) is a separate page that
+ * can legitimately connect while the first is still generating -- two concurrent LLM streams
+ * would interleave badly and the second would race for the compose APIs. The guard is a module
+ * variable set when a session is accepted and cleared in the .finally() wrapping runStreamed in
+ * the listener below (which fires on EVERY outcome: done, error, abort, disconnect), so
+ * "activeStreamPort !== null" is exactly "a session is in flight" -- no separate liveness
+ * probe is possible or needed.
+ */
+let activeStreamPort = null;
+
+browser.runtime.onConnect.addListener((port) => {
+  if (port.name !== "mail-agent-stream") return;
+  const firstMessage = new Promise((resolve, reject) => {
+    const listener = (msg) => {
+      port.onMessage.removeListener(listener);
+      port.onDisconnect.removeListener(disconnected);
+      resolve(msg);
+    };
+    const disconnected = () => {
+      // The UI left before ever sending start -- nothing to start, and no one left to report it to.
+      port.onMessage.removeListener(listener);
+      reject(new Error("streaming port disconnected before its start message"));
+    };
+    port.onMessage.addListener(listener);
+    port.onDisconnect.addListener(disconnected);
+  });
+  firstMessage
+    .then((msg) => {
+      if (!msg || msg.type !== "start") {
+        try { port.disconnect(); } catch (err) { /* port may already be gone */ }
+        return null;
+      }
+      if (activeStreamPort !== null) {
+        // Another generation is already running (from another agent window): refuse this one
+        // instead of starting a second concurrent LLM stream. The refusal goes out BEFORE the
+        // disconnect so the UI gets a reason rather than a bare "disconnected".
+        try {
+          port.postMessage({ type: "error", error: "Another generation is already running -- stop it first." });
+        } catch (err) { /* port may already be gone */ }
+        try { port.disconnect(); } catch (err) { /* port may already be gone */ }
+        return null;
+      }
+      activeStreamPort = port;
+      return runStreamed(port, msg.action, msg).finally(() => {
+        activeStreamPort = null; // released on every path: done, error, abort, and disconnect
+      });
+    })
+    .catch((err) => console.error("LaboBots: streaming session did not complete", err));
+});
 
 Rag.init().catch((err) => console.error("LaboBots RAG: init failed", err));
 
